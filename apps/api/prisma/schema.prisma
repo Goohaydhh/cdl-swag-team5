@@ -1,0 +1,356 @@
+// SWAG data model. Source of truth: section 4 of the Technical Architecture Document.
+// Every table holding personal data carries family_id so scoping, export and erasure stay simple.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "cjs"
+  importFileExtension = ""
+  previewFeatures     = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [citext]
+}
+
+enum DeviceKind {
+  parent_phone
+  child_tablet
+}
+
+enum PairingKind {
+  tablet_pairing
+  parent_invite
+}
+
+enum PairingState {
+  pending
+  claimed
+  approved
+  rejected
+  consumed
+  expired
+}
+
+enum ChildStatus {
+  at_home
+  left_home
+  at_friend
+}
+
+enum Availability {
+  available
+  busy
+  on_my_way
+  unavailable
+}
+
+enum RingerMode {
+  normal
+  vibrate
+  silent
+  unknown
+}
+
+enum ActorType {
+  user
+  child
+  system
+}
+
+enum MessageKind {
+  text
+  gif
+  sticker
+  drawing
+  system
+}
+
+enum UrlMatch {
+  exact
+  domain
+  prefix
+}
+
+model Family {
+  id                   String    @id @db.Uuid
+  name                 String
+  statusRetentionDays  Int       @default(30) @map("status_retention_days")
+  messageRetentionDays Int       @default(90) @map("message_retention_days")
+  allowlistVersion     Int       @default(1) @map("allowlist_version")
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  erasureRequestedAt   DateTime? @map("erasure_requested_at") @db.Timestamptz
+
+  users           User[]
+  children        ChildProfile[]
+  devices         Device[]
+  pairingSessions PairingSession[]
+  statusEvents    StatusEvent[]
+  conversations   Conversation[]
+  mediaObjects    MediaObject[]
+  allowedUrls     AllowedUrl[]
+
+  @@map("families")
+}
+
+model User {
+  id           String   @id @db.Uuid
+  familyId     String   @map("family_id") @db.Uuid
+  email        String   @unique @db.Citext
+  passwordHash String   @map("password_hash") // Argon2id
+  displayName  String   @map("display_name")
+  avatarKey    String?  @map("avatar_key")
+  isOwner      Boolean  @default(false) @map("is_owner")
+  adminPinHash String?  @map("admin_pin_hash") // unlocks parent mode on the tablet
+  consentAt    DateTime @map("consent_at") @db.Timestamptz // GDPR Art. 8 parental consent
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  family          Family           @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  devices         Device[]
+  sessions        UserSession[]
+  presence        ParentPresence?
+  pairingsCreated PairingSession[] @relation("PairingCreatedBy")
+  pairingsClaimed PairingSession[] @relation("PairingClaimedBy")
+  allowedUrls     AllowedUrl[]
+
+  @@map("users")
+}
+
+model ChildProfile {
+  id          String   @id @db.Uuid
+  familyId    String   @map("family_id") @db.Uuid
+  displayName String   @map("display_name") @db.VarChar(30)
+  avatarKey   String   @map("avatar_key")
+  color       String
+  pinHash     String?  @map("pin_hash") // optional picture PIN
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  family        Family               @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  devices       DeviceChildProfile[]
+  statusEvents  StatusEvent[]
+  currentStatus ChildCurrentStatus?
+  allowedUrls   AllowedUrl[]
+
+  @@map("child_profiles")
+}
+
+model Device {
+  id             String     @id @db.Uuid
+  familyId       String     @map("family_id") @db.Uuid
+  kind           DeviceKind
+  ownerUserId    String?    @map("owner_user_id") @db.Uuid // parent phones only
+  name           String
+  platformInfo   Json       @default("{}") @map("platform_info")
+  credentialHash String?    @map("credential_hash") // tablets: SHA-256 of device refresh token
+  pushToken      String?    @map("push_token")
+  lastSeenAt     DateTime?  @map("last_seen_at") @db.Timestamptz
+  revokedAt      DateTime?  @map("revoked_at") @db.Timestamptz
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz
+
+  family       Family               @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  owner        User?                @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  children     DeviceChildProfile[]
+  sessions     UserSession[]
+  statusEvents StatusEvent[]
+
+  @@map("devices")
+}
+
+model DeviceChildProfile {
+  deviceId       String @map("device_id") @db.Uuid
+  childProfileId String @map("child_profile_id") @db.Uuid
+
+  device Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  child  ChildProfile @relation(fields: [childProfileId], references: [id], onDelete: Cascade)
+
+  @@id([deviceId, childProfileId])
+  @@map("device_child_profiles")
+}
+
+model PairingSession {
+  id             String       @id @db.Uuid
+  kind           PairingKind
+  state          PairingState @default(pending)
+  familyId       String?      @map("family_id") @db.Uuid // set on claim (tablet) or creation (invite)
+  createdById    String?      @map("created_by") @db.Uuid
+  claimedById    String?      @map("claimed_by") @db.Uuid
+  codeHash       String       @map("code_hash") // HMAC-SHA256(server pepper, short code)
+  secretHash     String?      @map("secret_hash") // tablet poll secret, SHA-256
+  deviceInfo     Json         @default("{}") @map("device_info")
+  failedAttempts Int          @default(0) @map("failed_attempts")
+  expiresAt      DateTime     @map("expires_at") @db.Timestamptz
+  approvedAt     DateTime?    @map("approved_at") @db.Timestamptz
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  family    Family? @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  createdBy User?   @relation("PairingCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  claimedBy User?   @relation("PairingClaimedBy", fields: [claimedById], references: [id], onDelete: Cascade)
+
+  // A partial unique index on code_hash for live sessions is added by hand in the first migration.
+  @@index([codeHash])
+  @@map("pairing_sessions")
+}
+
+model UserSession {
+  id          String    @id @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  deviceId    String?   @map("device_id") @db.Uuid
+  tokenHash   String    @unique @map("token_hash")
+  tokenFamily String    @map("token_family") @db.Uuid // rotation chain, for reuse detection
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device Device? @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@map("user_sessions")
+}
+
+model StatusEvent {
+  id             String      @id @db.Uuid
+  familyId       String      @map("family_id") @db.Uuid
+  childProfileId String      @map("child_profile_id") @db.Uuid
+  deviceId       String?     @map("device_id") @db.Uuid
+  status         ChildStatus
+  note           String?     @db.VarChar(80)
+  clientEventId  String      @map("client_event_id") @db.Uuid
+  occurredAt     DateTime    @map("occurred_at") @db.Timestamptz // tablet clock, clamped by server
+  receivedAt     DateTime    @default(now()) @map("received_at") @db.Timestamptz
+
+  family  Family              @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  child   ChildProfile        @relation(fields: [childProfileId], references: [id], onDelete: Cascade)
+  device  Device?             @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  current ChildCurrentStatus?
+
+  @@unique([deviceId, clientEventId]) // idempotent replay
+  @@index([childProfileId, occurredAt(sort: Desc)])
+  @@map("status_events")
+}
+
+model ChildCurrentStatus {
+  childProfileId String      @id @map("child_profile_id") @db.Uuid
+  familyId       String      @map("family_id") @db.Uuid
+  status         ChildStatus
+  eventId        String      @unique @map("event_id") @db.Uuid
+  occurredAt     DateTime    @map("occurred_at") @db.Timestamptz
+
+  child ChildProfile @relation(fields: [childProfileId], references: [id], onDelete: Cascade)
+  event StatusEvent  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@map("child_current_status")
+}
+
+model ParentPresence {
+  userId         String       @id @map("user_id") @db.Uuid
+  familyId       String       @map("family_id") @db.Uuid
+  availability   Availability @default(available)
+  etaMinutes     Int?         @map("eta_minutes") @db.SmallInt
+  availabilityAt DateTime     @default(now()) @map("availability_at") @db.Timestamptz
+  ringer         RingerMode   @default(unknown)
+  ringerAt       DateTime?    @map("ringer_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@map("parent_presence")
+}
+
+model Conversation {
+  id        String   @id @db.Uuid
+  familyId  String   @map("family_id") @db.Uuid
+  isGroup   Boolean  @default(false) @map("is_group")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  family   Family               @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  members  ConversationMember[]
+  messages Message[]
+
+  @@map("conversations")
+}
+
+model ConversationMember {
+  conversationId String    @map("conversation_id") @db.Uuid
+  memberType     ActorType @map("member_type") // 'user' or 'child'
+  memberId       String    @map("member_id") @db.Uuid
+  lastReadId     String?   @map("last_read_id") @db.Uuid
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, memberType, memberId])
+  @@map("conversation_members")
+}
+
+model MediaObject {
+  id         String   @id @db.Uuid
+  familyId   String   @map("family_id") @db.Uuid
+  storageKey String   @map("storage_key")
+  mime       String // image/png or image/webp, checked in the API
+  bytes      Int // max 1 MB, checked in the API
+  width      Int?
+  height     Int?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  family   Family    @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@map("media_objects")
+}
+
+model Message {
+  id             String      @id @db.Uuid // UUIDv7: cursor-friendly
+  conversationId String      @map("conversation_id") @db.Uuid
+  familyId       String      @map("family_id") @db.Uuid
+  senderType     ActorType   @map("sender_type")
+  senderId       String?     @map("sender_id") @db.Uuid
+  kind           MessageKind
+  body           String?     @db.VarChar(2000)
+  mediaId        String?     @map("media_id") @db.Uuid
+  stickerCode    String?     @map("sticker_code")
+  gifRef         String?     @map("gif_ref") // Giphy ID, re-hosted in object storage
+  clientMsgId    String      @map("client_msg_id") @db.Uuid
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  deletedAt      DateTime?   @map("deleted_at") @db.Timestamptz
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  media        MediaObject? @relation(fields: [mediaId], references: [id], onDelete: SetNull)
+
+  @@unique([senderType, senderId, clientMsgId])
+  @@index([conversationId, id(sort: Desc)])
+  @@map("messages")
+}
+
+model AllowedUrl {
+  id             String   @id @db.Uuid
+  familyId       String   @map("family_id") @db.Uuid
+  childProfileId String?  @map("child_profile_id") @db.Uuid // null = all children
+  match          UrlMatch
+  host           String // punycode, lower case, no port
+  pathPrefix     String   @default("/") @map("path_prefix")
+  title          String
+  iconKey        String?  @map("icon_key")
+  createdById    String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  family    Family        @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  child     ChildProfile? @relation(fields: [childProfileId], references: [id], onDelete: Cascade)
+  createdBy User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([familyId, childProfileId, match, host, pathPrefix])
+  @@map("allowed_urls")
+}
+
+model AuditLog {
+  id        BigInt    @id @default(autoincrement())
+  familyId  String?   @map("family_id") @db.Uuid
+  actorType ActorType @map("actor_type")
+  actorId   String?   @map("actor_id") @db.Uuid
+  action    String // e.g. 'pairing.approved', 'device.revoked'
+  meta      Json      @default("{}") // no message content; IP stored as a keyed hash
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([familyId, createdAt])
+  @@map("audit_log")
+}

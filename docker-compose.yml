@@ -1,0 +1,52 @@
+# Local stand-ins for the Scaleway services (Managed PostgreSQL, Managed Redis, Object Storage).
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: swag
+      POSTGRES_PASSWORD: swag
+      POSTGRES_DB: swag
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U swag']
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+
+  # S3-compatible storage (RustFS; MinIO no longer publishes Docker images).
+  s3:
+    image: rustfs/rustfs:latest
+    environment:
+      RUSTFS_ACCESS_KEY: swag
+      RUSTFS_SECRET_KEY: swag-dev-secret
+      RUSTFS_CONSOLE_ENABLE: 'true'
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - s3data:/data
+
+  s3-init:
+    image: amazon/aws-cli:latest
+    depends_on:
+      - s3
+    environment:
+      AWS_ACCESS_KEY_ID: swag
+      AWS_SECRET_ACCESS_KEY: swag-dev-secret
+      AWS_DEFAULT_REGION: fr-par
+    entrypoint: >
+      /bin/sh -c "
+      until aws --endpoint-url http://s3:9000 s3 ls >/dev/null 2>&1; do sleep 1; done;
+      aws --endpoint-url http://s3:9000 s3 mb s3://swag-media || true;
+      "
+
+volumes:
+  pgdata:
+  s3data:

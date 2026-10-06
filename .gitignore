@@ -1,0 +1,40 @@
+# Dependencies and build output
+node_modules/
+dist/
+build/
+.turbo/
+coverage/
+
+# Expo / React Native
+.expo/
+apps/parent/android/
+apps/parent/ios/
+*.apk
+*.aab
+*.keystore
+!debug.keystore
+
+# Capacitor / Android
+apps/tablet/android/app/build/
+apps/tablet/android/.gradle/
+local.properties
+.gradle/
+.idea/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and OS files
+*.log
+.DS_Store
+Thumbs.db
+
+# Keep shared VS Code settings, ignore personal ones
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Generated Prisma client
+apps/api/src/generated/

@@ -1,0 +1,39 @@
+{
+  // Project terminals (cmd or PowerShell) use Node 22 via fnm and JDK 21, without touching system-wide PATH or JAVA_HOME.
+  "terminal.integrated.env.windows": {
+    "JAVA_HOME": "${env:LOCALAPPDATA}\\Programs\\jdk-21",
+    "ANDROID_HOME": "${env:LOCALAPPDATA}\\Android\\Sdk",
+    "PATH": "${env:APPDATA}\\fnm\\aliases\\default;${env:LOCALAPPDATA}\\Programs\\jdk-21\\bin;${env:LOCALAPPDATA}\\Android\\Sdk\\platform-tools;${env:PATH}"
+  },
+  "terminal.integrated.defaultProfile.windows": "Command Prompt",
+
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "[prisma]": {
+    "editor.defaultFormatter": "Prisma.prisma"
+  },
+  "[kotlin]": {
+    "editor.defaultFormatter": null
+  },
+  "files.eol": "\n",
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.preferences.importModuleSpecifier": "non-relative",
+  "eslint.workingDirectories": [{ "mode": "auto" }],
+
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/.turbo": true,
+    "**/android/build": true,
+    "**/.expo": true
+  },
+  "files.exclude": {
+    "**/.turbo": true
+  }
+}

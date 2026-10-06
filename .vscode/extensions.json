@@ -1,0 +1,20 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "Prisma.prisma",
+    "ms-azuretools.vscode-docker",
+    "expo.vscode-expo-tools",
+    "msjsdiag.vscode-react-native",
+    "vitest.explorer",
+    "ms-playwright.playwright",
+    "editorconfig.editorconfig",
+    "jebbs.plantuml",
+    "redhat.vscode-yaml",
+    "github.vscode-github-actions",
+    "fwcd.kotlin",
+    "usernamehw.errorlens",
+    "mikestead.dotenv",
+    "yoavbls.pretty-ts-errors"
+  ]
+}

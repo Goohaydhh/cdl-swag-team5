@@ -1,0 +1,39 @@
+{
+  "name": "@swag/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "nest start --watch",
+    "build": "prisma generate && nest build",
+    "start": "node dist/main.js",
+    "typecheck": "prisma generate && tsc --noEmit",
+    "db:migrate": "prisma migrate dev",
+    "db:generate": "prisma generate",
+    "db:studio": "prisma studio",
+    "smoke:rt": "node scripts/smoke-rt.cjs"
+  },
+  "dependencies": {
+    "@nestjs/common": "^12.1.2",
+    "@nestjs/config": "^12.0.1",
+    "@nestjs/core": "^12.1.2",
+    "@nestjs/platform-express": "^12.1.2",
+    "@nestjs/platform-socket.io": "^12.1.2",
+    "@nestjs/websockets": "^12.1.2",
+    "@prisma/adapter-pg": "~7.10.0",
+    "@prisma/client": "~7.10.0",
+    "@socket.io/redis-adapter": "^8.3.0",
+    "@swag/protocol": "workspace:*",
+    "dotenv": "^18.0.5",
+    "pg": "^8.23.1",
+    "redis": "^6.3.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "socket.io": "4.8.3",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^12.0.8",
+    "prisma": "~7.10.0",
+    "socket.io-client": "4.8.3"
+  }
+}
