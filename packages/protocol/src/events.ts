@@ -1,4 +1,4 @@
-import type { Availability, ChildStatus, RingerMode } from './enums';
+import type { Availability, ChildStatus, PairingState, RingerMode } from './enums';
 import type {
   ChatMessageInput,
   ChatReadInput,
@@ -77,7 +77,9 @@ export interface ServerToClientEvents {
   ): void;
   ringer_updated(e: Envelope<{ user_id: string; mode: RingerMode; updated_at: string }>): void;
   chat_message_created(e: Envelope<{ message: Message }>): void;
-  chat_typing(e: Envelope<{ conversation_id: string; member: MemberRef; typing: boolean }>): void;
+  chat_typing(
+    e: Envelope<{ conversation_id: string; member: MemberRef; speaker_ids?: string[]; typing: boolean }>,
+  ): void;
   chat_read(
     e: Envelope<{ conversation_id: string; member: MemberRef; up_to_message_id: string }>,
   ): void;
@@ -87,7 +89,14 @@ export interface ServerToClientEvents {
   device_revoked(e: Envelope<{ reason: 'parent_revoked' | 'family_erased' }>): void;
   auth_expiring(e: Envelope<{ expires_at: string }>): void;
   resync_required(e: Envelope<Record<string, never>>): void;
-  /** A child tapped "Ask to open" on a blocked site (FR-9). Sent to parents only. */
+  /**
+   * Parent-side pairing progress: a tablet typed or scanned the code (`claimed`), or the
+   * session was approved, rejected or expired. Sent to the family's parents only.
+   */
+  pairing_updated(
+    e: Envelope<{ pairing_id: string; state: PairingState; device_info: Record<string, unknown> }>,
+  ): void;
+  /** A child tapped "Ask to open" on a blocked site (FR-9). Sent to parents only. Sites are off for now. */
   url_access_requested(e: Envelope<{ child_id: string; url: string; requested_at: string }>): void;
 }
 

@@ -44,7 +44,6 @@ export class MediaService {
    * caps the size, and normalises to PNG (drawings need sharp lines and transparency).
    */
   async uploadImage(p: Principal, input: Buffer) {
-    if (p.scope === 'device') throw ApiError.forbidden('Pick a child profile first');
     await this.rateLimit.consume(`upload:${p.sub}`, 30, 3600);
     if (input.length > MAX_UPLOAD_BYTES) throw ApiError.validation('Images are limited to 1 MB');
 

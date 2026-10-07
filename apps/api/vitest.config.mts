@@ -30,6 +30,7 @@ export default defineConfig({
       S3_ACCESS_KEY: 'swag',
       S3_SECRET_KEY: 'swag-dev-secret',
       GIPHY_API_KEY: '',
+      FEATURE_SITES: 'true',
     },
   },
 });

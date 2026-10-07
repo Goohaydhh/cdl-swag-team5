@@ -1,12 +1,13 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { ChatMessageInput, MessagesQuery, OpenConversationInput } from '@swag/protocol';
+import { ChatMessageInput, MessagesQuery } from '@swag/protocol';
 import { CurrentPrincipal, Scopes } from '../auth/decorators';
 import type { Principal } from '../auth/principal';
 import { UuidParam, ZodPipe } from '../common/zod.pipe';
 import { ChatService } from './chat.service';
 import { stickerCatalog } from './stickers';
 
-@Scopes('parent', 'child')
+/** One conversation per family (the family chat). The tablet posts with its device token. */
+@Scopes('parent', 'child', 'device')
 @Controller()
 export class ChatController {
   constructor(private readonly chat: ChatService) {}
@@ -16,9 +17,10 @@ export class ChatController {
     return this.chat.list(p);
   }
 
-  @Post('conversations')
-  open(@CurrentPrincipal() p: Principal, @Body(new ZodPipe(OpenConversationInput)) body: OpenConversationInput) {
-    return this.chat.openDirect(p, body.member);
+  /** Shortcut for the apps: the family chat with its unread count. */
+  @Get('conversations/family')
+  async family(@CurrentPrincipal() p: Principal) {
+    return (await this.chat.list(p))[0];
   }
 
   @Get('conversations/:id/messages')

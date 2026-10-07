@@ -174,6 +174,13 @@ describe('parent availability and ringer (FR-7, FR-13)', () => {
     socket.close();
   });
 
+  it('"unavailable" no longer exists: it was merged into "busy" (Occupée)', async () => {
+    const { parent } = await family();
+    await api(t, parent.token).put('/me/availability').send({ status: 'unavailable' }).expect(400);
+    await api(t, parent.token).put('/me/availability').send({ status: 'busy' }).expect(200);
+    expect((await overview(parent)).parents[0].availability).toBe('busy');
+  });
+
   it('a tablet cannot set parent availability', async () => {
     const { tablet } = await family();
     const socket = await connectSocket(t, tablet.deviceToken);

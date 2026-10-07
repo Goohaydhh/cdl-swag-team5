@@ -4,6 +4,12 @@
  */
 export const STICKER_PACKS = [
   {
+    // The Gremlin stickers drawn for the SWAG apps (star, heart, sun, thumbs up, pizza).
+    id: 'swag',
+    title: 'SWAG',
+    stickers: ['star', 'heart', 'sun', 'ok', 'pizza'],
+  },
+  {
     id: 'feelings',
     title: 'Feelings',
     stickers: ['happy', 'love', 'laugh', 'sad', 'angry', 'sleepy', 'wow', 'thinking'],

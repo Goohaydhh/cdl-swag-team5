@@ -246,25 +246,37 @@ export class FamilyService {
     };
   }
 
-  /** What the tablet's profile picker shows: its assigned children and the family's parents. */
+  /**
+   * Everything the tablet shows: its children (for the "who is speaking" chips) with their
+   * current status, and the parents with their availability and ringer mode.
+   */
   async deviceProfiles(principal: Principal) {
     const device = await this.prisma.device.findFirstOrThrow({
       where: { id: principal.dev, familyId: principal.fam },
       include: {
-        family: { include: { users: { orderBy: { createdAt: 'asc' } } } },
-        children: { include: { child: true } },
+        family: { include: { users: { orderBy: { createdAt: 'asc' }, include: { presence: true } } } },
+        children: { include: { child: { include: { currentStatus: true } } } },
       },
     });
     return {
       family: { id: device.family.id, name: device.family.name },
+      device: { id: device.id, name: device.name },
       children: device.children
         .map((c) => c.child)
         .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt.getTime() - b.createdAt.getTime())
-        .map(toChildDto),
+        .map((c) => ({
+          ...toChildDto(c),
+          status: c.currentStatus
+            ? { status: c.currentStatus.status, occurred_at: c.currentStatus.occurredAt.toISOString() }
+            : null,
+        })),
       parents: device.family.users.map((u) => ({
         id: u.id,
         display_name: u.displayName,
         avatar_key: u.avatarKey,
+        availability: u.presence?.availability ?? 'available',
+        eta_minutes: u.presence?.etaMinutes ?? null,
+        ringer: u.presence?.ringer ?? 'unknown',
       })),
     };
   }

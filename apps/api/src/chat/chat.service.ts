@@ -17,15 +17,13 @@ import { PushService } from '../push/push.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { isStickerCode } from './stickers';
 
-export function memberOf(p: Principal): MemberRef {
-  if (p.scope === 'parent') return { type: 'user', id: p.sub };
-  if (p.scope === 'child') return { type: 'child', id: p.sub };
-  throw ApiError.forbidden('Pick a child profile to chat');
+/** Who acts in the chat: the member that "owns" the action, and the children speaking (tablet chips). */
+export interface ChatActor {
+  me: MemberRef;
+  speakerIds: string[];
 }
 
 const memberRoom = (m: MemberRef) => (m.type === 'user' ? rooms.user(m.id) : rooms.child(m.id));
-const directKey = (a: MemberRef, b: MemberRef) =>
-  [`${a.type}:${a.id}`, `${b.type}:${b.id}`].sort().join('|');
 
 export function toMessageDto(m: Message): MessageDto {
   return {
@@ -37,11 +35,17 @@ export function toMessageDto(m: Message): MessageDto {
     ...(m.mediaId !== null ? { media_id: m.mediaId } : {}),
     ...(m.stickerCode !== null ? { sticker_code: m.stickerCode } : {}),
     ...(m.gifRef !== null ? { gif_ref: m.gifRef } : {}),
+    speaker_ids: m.speakerIds,
+    client_msg_id: m.clientMsgId,
     created_at: m.createdAt.toISOString(),
   };
 }
 
-/** Family group chat and parent-child threads (FR-10, FR-11, FR-12). */
+/**
+ * The family chat (FR-10, FR-11, FR-12). Product decision: ONE conversation per family, the
+ * group chat. Parents, a child token, or the tablet itself (device token + `speaker_ids` from
+ * the "who is speaking" chips) can post in it.
+ */
 @Injectable()
 export class ChatService {
   constructor(
@@ -66,71 +70,25 @@ export class ChatService {
     }
   }
 
-  /** Rooms a socket joins on connect: its member room and every conversation it belongs to. */
+  /** Rooms a socket joins on connect: its member room (if any) and the family chat. */
   async socketRooms(p: Principal): Promise<string[]> {
-    if (p.scope === 'device') return [];
-    const me = memberOf(p);
     const group = await this.ensureGroup(p.fam);
-    const direct = await this.prisma.conversationMember.findMany({
-      where: { memberType: me.type, memberId: me.id, conversation: { familyId: p.fam, isGroup: false } },
-      select: { conversationId: true },
-    });
-    return [memberRoom(me), rooms.conversation(group.id), ...direct.map((d) => rooms.conversation(d.conversationId))];
+    if (p.scope === 'device') return [rooms.conversation(group.id)];
+    const me = p.scope === 'parent' ? ({ type: 'user', id: p.sub } as const) : ({ type: 'child', id: p.sub } as const);
+    return [memberRoom(me), rooms.conversation(group.id)];
   }
 
+  /** Always one item: the family chat. Kept as a list so clients can stay generic. */
   async list(p: Principal) {
-    const me = memberOf(p);
+    const actor = await this.resolveActor(p);
     const group = await this.ensureGroup(p.fam);
-    const direct = await this.prisma.conversation.findMany({
-      where: { familyId: p.fam, isGroup: false, members: { some: { memberType: me.type, memberId: me.id } } },
-      include: { members: true },
-      orderBy: { createdAt: 'asc' },
-    });
-    const all = [{ ...group, members: [] as { memberType: string; memberId: string }[] }, ...direct];
-    return Promise.all(all.map((c) => this.describe(c, me)));
-  }
-
-  /** Opens (or returns) the direct thread between the caller and another family member. */
-  async openDirect(p: Principal, other: MemberRef) {
-    const me = memberOf(p);
-    if (me.type === other.type && me.id === other.id) throw ApiError.validation('Cannot chat with yourself');
-    if (me.type === 'child' && other.type === 'child') {
-      throw ApiError.validation('Children chat with parents, not with each other');
-    }
-    await this.assertFamilyMember(p.fam, other);
-
-    const key = directKey(me, other);
-    let conversation = await this.prisma.conversation.findUnique({ where: { directKey: key }, include: { members: true } });
-    if (!conversation) {
-      try {
-        conversation = await this.prisma.conversation.create({
-          data: {
-            id: newId(),
-            familyId: p.fam,
-            directKey: key,
-            members: {
-              create: [me, other].map((m) => ({ memberType: m.type, memberId: m.id })),
-            },
-          },
-          include: { members: true },
-        });
-        // Live sockets of both members start receiving this thread right away.
-        for (const m of [me, other]) this.realtime.joinRoom(memberRoom(m), rooms.conversation(conversation.id));
-      } catch (err) {
-        if (!isUniqueViolation(err)) throw err;
-        conversation = await this.prisma.conversation.findUniqueOrThrow({
-          where: { directKey: key },
-          include: { members: true },
-        });
-      }
-    }
-    return this.describe(conversation, me);
+    return [await this.describe(group, actor)];
   }
 
   // ---------------------------------------------------------------- messages
 
   async send(p: Principal, input: ChatMessageInput): Promise<{ message: MessageDto; duplicate: boolean }> {
-    const me = memberOf(p);
+    const { me, speakerIds } = await this.resolveActor(p, input.speaker_ids);
     const conversation = await this.assertMember(p, input.conversation_id);
 
     const existing = await this.prisma.message.findUnique({
@@ -150,6 +108,7 @@ export class ChatService {
           senderId: me.id,
           kind: input.kind,
           clientMsgId: input.client_msg_id,
+          speakerIds,
           ...content,
         },
       });
@@ -163,7 +122,7 @@ export class ChatService {
 
     const dto = toMessageDto(message);
     await this.realtime.toConversation(p.fam, conversation.id, 'chat_message_created', { message: dto });
-    if (await this.parentsShouldBePushed(conversation, me)) {
+    if (me.type === 'child' || conversation.isGroup) {
       this.push.notifyParents(
         p.fam,
         { type: 'chat_message', message_id: message.id, conversation_id: conversation.id },
@@ -190,64 +149,95 @@ export class ChatService {
 
   /** Moves the caller's read marker forward (never back) and tells the conversation. */
   async markRead(p: Principal, input: ChatReadInput) {
-    const me = memberOf(p);
+    const actor = await this.resolveActor(p);
     await this.assertMember(p, input.conversation_id);
     const message = await this.prisma.message.findFirst({
       where: { id: input.up_to_message_id, conversationId: input.conversation_id },
     });
     if (!message) throw ApiError.notFound('Message');
 
-    const key = {
-      conversationId_memberType_memberId: {
-        conversationId: input.conversation_id,
-        memberType: me.type,
-        memberId: me.id,
-      },
-    };
-    const current = await this.prisma.conversationMember.findUnique({ where: key });
-    if (current?.lastReadId && current.lastReadId >= message.id) return; // UUIDv7 sorts by time
-    await this.prisma.conversationMember.upsert({
-      where: key,
-      create: { conversationId: input.conversation_id, memberType: me.type, memberId: me.id, lastReadId: message.id },
-      update: { lastReadId: message.id },
-    });
-    await this.realtime.toConversation(p.fam, input.conversation_id, 'chat_read', {
-      conversation_id: input.conversation_id,
-      member: me,
-      up_to_message_id: message.id,
-    });
+    // On the tablet, reading the chat counts for every child of the tablet.
+    const readers: MemberRef[] =
+      p.scope === 'device' ? actor.speakerIds.map((id) => ({ type: 'child', id })) : [actor.me];
+    for (const me of readers) {
+      const key = {
+        conversationId_memberType_memberId: {
+          conversationId: input.conversation_id,
+          memberType: me.type,
+          memberId: me.id,
+        },
+      };
+      const current = await this.prisma.conversationMember.findUnique({ where: key });
+      if (current?.lastReadId && current.lastReadId >= message.id) continue; // UUIDv7 sorts by time
+      await this.prisma.conversationMember.upsert({
+        where: key,
+        create: { conversationId: input.conversation_id, memberType: me.type, memberId: me.id, lastReadId: message.id },
+        update: { lastReadId: message.id },
+      });
+      await this.realtime.toConversation(p.fam, input.conversation_id, 'chat_read', {
+        conversation_id: input.conversation_id,
+        member: me,
+        up_to_message_id: message.id,
+      });
+    }
   }
 
-  async typing(p: Principal, conversationId: string, typing: boolean) {
-    const me = memberOf(p);
+  async typing(p: Principal, conversationId: string, typing: boolean, speakerIds?: string[]) {
+    const actor = await this.resolveActor(p, speakerIds);
     await this.assertMember(p, conversationId);
     await this.realtime.toConversationVolatile(p.fam, conversationId, 'chat_typing', {
       conversation_id: conversationId,
-      member: me,
+      member: actor.me,
+      ...(actor.speakerIds.length > 1 ? { speaker_ids: actor.speakerIds } : {}),
       typing,
     });
   }
 
   // ---------------------------------------------------------------- helpers
 
+  /**
+   * Resolves who is acting. Parents and child tokens act as themselves. The tablet's device
+   * token acts for the children checked in the "who is speaking" chips, which must all be
+   * assigned to that tablet; without chips it stands for all its children (reads, history).
+   */
+  async resolveActor(p: Principal, speakerIds?: string[]): Promise<ChatActor> {
+    if (p.scope === 'parent') return { me: { type: 'user', id: p.sub }, speakerIds: [] };
+    if (p.scope === 'child') return { me: { type: 'child', id: p.sub }, speakerIds: [p.sub] };
+
+    const links = await this.prisma.deviceChildProfile.findMany({
+      where: { deviceId: p.dev ?? p.sub, child: { familyId: p.fam } },
+      include: { child: { select: { sortOrder: true, createdAt: true } } },
+    });
+    const onTablet = links
+      .sort((a, b) => a.child.sortOrder - b.child.sortOrder || a.child.createdAt.getTime() - b.child.createdAt.getTime())
+      .map((l) => l.childProfileId);
+    if (!onTablet.length) throw ApiError.forbidden('No child is assigned to this tablet');
+    const chosen = speakerIds?.length ? [...new Set(speakerIds)] : onTablet;
+    if (chosen.some((id) => !onTablet.includes(id))) {
+      throw ApiError.validation('speaker_ids must be children of this tablet');
+    }
+    return { me: { type: 'child', id: chosen[0]! }, speakerIds: chosen };
+  }
+
+  /** Only the family chat exists; legacy direct threads stay readable by their members. */
   async assertMember(p: Principal, conversationId: string): Promise<Conversation> {
-    const me = memberOf(p);
+    if (p.scope === 'device') {
+      const group = await this.prisma.conversation.findFirst({
+        where: { id: conversationId, familyId: p.fam, isGroup: true },
+      });
+      if (!group) throw ApiError.notFound('Conversation');
+      return group;
+    }
     const conversation = await this.prisma.conversation.findFirst({
       where: { id: conversationId, familyId: p.fam },
-      include: { members: { where: { memberType: me.type, memberId: me.id } } },
+      include: {
+        members: { where: { memberType: p.scope === 'parent' ? 'user' : 'child', memberId: p.sub } },
+      },
     });
     if (!conversation || (!conversation.isGroup && conversation.members.length === 0)) {
       throw ApiError.notFound('Conversation');
     }
     return conversation;
-  }
-
-  private async assertFamilyMember(familyId: string, m: MemberRef) {
-    const found =
-      m.type === 'user'
-        ? await this.prisma.user.count({ where: { id: m.id, familyId } })
-        : await this.prisma.childProfile.count({ where: { id: m.id, familyId } });
-    if (!found) throw ApiError.notFound('Family member');
   }
 
   private async validateContent(familyId: string, input: ChatMessageInput) {
@@ -268,20 +258,7 @@ export class ChatService {
     }
   }
 
-  /** Parents get a push for messages from children, and for group messages from another parent. */
-  private async parentsShouldBePushed(conversation: Conversation, sender: MemberRef) {
-    if (sender.type === 'child') return true;
-    if (conversation.isGroup) return true;
-    const others = await this.prisma.conversationMember.count({
-      where: { conversationId: conversation.id, memberType: 'user', NOT: { memberId: sender.id } },
-    });
-    return others > 0;
-  }
-
-  private async describe(
-    c: Conversation & { members: { memberType: string; memberId: string }[] },
-    me: MemberRef,
-  ) {
+  private async describe(c: Conversation, { me }: ChatActor) {
     const mine = await this.prisma.conversationMember.findUnique({
       where: {
         conversationId_memberType_memberId: { conversationId: c.id, memberType: me.type, memberId: me.id },
@@ -304,7 +281,6 @@ export class ChatService {
     return {
       id: c.id,
       is_group: c.isGroup,
-      members: c.isGroup ? null : c.members.map((m) => ({ type: m.memberType, id: m.memberId })),
       last_message: last ? toMessageDto(last) : null,
       unread_count: unread,
       last_read_id: mine?.lastReadId ?? null,

@@ -100,3 +100,27 @@ describe('"Ask to open" (FR-9)', () => {
     for (const s of [parentSocket, leaSocket]) s.close();
   });
 });
+
+describe('sites are paused by default (product decision)', () => {
+  it('answers 404 on every sites route when FEATURE_SITES is off', async () => {
+    const previous = process.env.FEATURE_SITES;
+    process.env.FEATURE_SITES = 'false';
+    const off = await createTestApp();
+    try {
+      const parent = await registerParent(off);
+      const child = await createChild(off, parent);
+      const tablet = await pairTablet(off, parent, [child.id]);
+      await api(off, parent.token).get('/allowed-urls').expect(404);
+      await api(off, parent.token).post('/allowed-urls').send({ url: 'wikipedia.org' }).expect(404);
+      await api(off, tablet.deviceToken).get('/device/allowed-urls').expect(404);
+      const token = await childToken(off, tablet, child.id);
+      const socket = await connectSocket(off, token);
+      const ack = await socket.emitWithAck('url_access_request', { url: 'https://minecraft.net' });
+      expect(ack).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
+      socket.close();
+    } finally {
+      process.env.FEATURE_SITES = previous;
+      await off.close();
+    }
+  });
+});

@@ -168,7 +168,7 @@ export class RtGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayD
   @SubscribeMessage('chat_typing')
   async chatTyping(@ConnectedSocket() socket: RtSocket, @MessageBody() body: unknown) {
     await this.handle(socket, 'chat_typing', ChatTypingInput, body, async (input) => {
-      await this.chat.typing(socket.data, input.conversation_id, input.typing);
+      await this.chat.typing(socket.data, input.conversation_id, input.typing, input.speaker_ids);
       return {};
     });
   }

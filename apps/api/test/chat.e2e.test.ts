@@ -112,40 +112,86 @@ describe('family chat (FR-10, FR-12)', () => {
   });
 });
 
-describe('direct threads', () => {
-  it("a parent-child thread stays private from the sibling", async () => {
-    const { parent, lea, tom } = await family();
-    const thread = await api(t, parent.token)
-      .post('/conversations')
-      .send({ member: { type: 'child', id: lea.id } })
+describe('one family chat only (product decision)', () => {
+  it('there is no way to open a private thread', async () => {
+    const { parent, lea } = await family();
+    await api(t, parent.token).post('/conversations').send({ member: { type: 'child', id: lea.id } }).expect(404);
+    const list = await api(t, lea.token).get('/conversations').expect(200);
+    expect(list.body).toHaveLength(1);
+    expect(list.body[0].is_group).toBe(true);
+    const fam = await api(t, parent.token).get('/conversations/family').expect(200);
+    expect(fam.body.id).toBe(list.body[0].id);
+  });
+});
+
+describe('the tablet writes with "who is speaking" chips', () => {
+  async function tabletFamily() {
+    const parent = await registerParent(t);
+    const lea = await createChild(t, parent, { display_name: 'Léa' });
+    const tom = await createChild(t, parent, { display_name: 'Tom' });
+    const ines = await createChild(t, parent, { display_name: 'Inès' });
+    const tablet = await pairTablet(t, parent, [lea.id, tom.id]);
+    return { parent, lea, tom, ines, tablet };
+  }
+
+  it('a shared message from Léa and Tom reaches the parent live', async () => {
+    const { parent, lea, tom, tablet } = await tabletFamily();
+    const group = await groupId(tablet.deviceToken);
+    expect(group).toBe(await groupId(parent.token));
+
+    const parentSocket = await connectSocket(t, parent.token);
+    const tabletSocket = await connectSocket(t, tablet.deviceToken);
+    const heard = nextEvent<{ data: { message: { sender: { type: string; id: string }; speaker_ids: string[]; body: string } } }>(
+      parentSocket,
+      'chat_message_created',
+    );
+    const ack = await tabletSocket.emitWithAck('chat_message', { ...text(group, 'On est rentrés !'), speaker_ids: [lea.id, tom.id] });
+    expect(ack).toMatchObject({ ok: true });
+    const { message } = (await heard).data;
+    expect(message.speaker_ids).toEqual([lea.id, tom.id]);
+    expect(message.sender).toEqual({ type: 'child', id: lea.id });
+    for (const s of [parentSocket, tabletSocket]) s.close();
+  });
+
+  it('a single checked child is a personal message; parents have no speakers', async () => {
+    const { parent, tom, tablet } = await tabletFamily();
+    const group = await groupId(tablet.deviceToken);
+    const sent = await api(t, tablet.deviceToken)
+      .post(`/conversations/${group}/messages`)
+      .send({ ...text(group, 'Je suis chez Hugo'), speaker_ids: [tom.id] })
       .expect(201);
-    // Opening it again returns the same thread.
-    const again = await api(t, lea.token).post('/conversations').send({ member: { type: 'user', id: parent.userId } }).expect(201);
-    expect(again.body.id).toBe(thread.body.id);
-
-    const tomSocket = await connectSocket(t, tom.token);
-    const leaSocket = await connectSocket(t, lea.token);
-    let tomHeard = false;
-    tomSocket.on('chat_message_created', () => (tomHeard = true));
-    const leaHears = nextEvent(leaSocket, 'chat_message_created');
-
-    await api(t, parent.token).post(`/conversations/${thread.body.id}/messages`).send(text(thread.body.id, 'Bravo !')).expect(201);
-    await leaHears;
-    await new Promise((r) => setTimeout(r, 200));
-    expect(tomHeard).toBe(false);
-    await api(t, tom.token).get(`/conversations/${thread.body.id}/messages`).expect(404);
-    for (const s of [tomSocket, leaSocket]) s.close();
+    expect(sent.body.message.speaker_ids).toEqual([tom.id]);
+    const fromParent = await api(t, parent.token).post(`/conversations/${group}/messages`).send(text(group, 'OK')).expect(201);
+    expect(fromParent.body.message.speaker_ids).toEqual([]);
   });
 
-  it('children cannot open a thread with each other', async () => {
-    const { lea, tom } = await family();
-    await api(t, lea.token).post('/conversations').send({ member: { type: 'child', id: tom.id } }).expect(400);
+  it('refuses a speaker who is not on this tablet', async () => {
+    const { ines, tablet } = await tabletFamily();
+    const group = await groupId(tablet.deviceToken);
+    await api(t, tablet.deviceToken)
+      .post(`/conversations/${group}/messages`)
+      .send({ ...text(group, 'Coucou'), speaker_ids: [ines.id] })
+      .expect(400);
   });
 
-  it("nobody can open a thread with another family's member", async () => {
-    const a = await family();
-    const b = await family();
-    await api(t, a.parent.token).post('/conversations').send({ member: { type: 'child', id: b.lea.id } }).expect(404);
+  it('the tablet sets the status of each checked child', async () => {
+    const { parent, lea, tom, ines, tablet } = await tabletFamily();
+    const at = new Date().toISOString();
+    for (const child of [lea, tom]) {
+      await api(t, tablet.deviceToken)
+        .post(`/children/${child.id}/status`)
+        .send({ client_event_id: randomUUID(), status: 'at_home', occurred_at: at })
+        .expect(200);
+    }
+    await api(t, tablet.deviceToken)
+      .post(`/children/${ines.id}/status`)
+      .send({ client_event_id: randomUUID(), status: 'at_home', occurred_at: at })
+      .expect(403);
+    const overview = await api(t, parent.token).get('/family/overview').expect(200);
+    const statuses = Object.fromEntries(
+      overview.body.children.map((c: { id: string; status: { status: string } | null }) => [c.id, c.status?.status ?? null]),
+    );
+    expect(statuses).toEqual({ [lea.id]: 'at_home', [tom.id]: 'at_home', [ines.id]: null });
   });
 });
 
@@ -176,10 +222,11 @@ describe('stickers and notifications (FR-11)', () => {
       .toEqual({ type: 'chat_message', message_id: sent.body.message.id, conversation_id: group });
   });
 
-  it('a tablet without a child profile cannot chat', async () => {
+  it('a tablet whose children were all removed cannot chat', async () => {
     const parent = await registerParent(t);
     const child = await createChild(t, parent);
     const tablet = await pairTablet(t, parent, [child.id]);
+    await api(t, parent.token).patch(`/devices/${tablet.deviceId}`).send({ child_ids: [] }).expect(200);
     await api(t, tablet.deviceToken).get('/conversations').expect(403);
   });
 });

@@ -1,9 +1,10 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { type AddAllowedUrlInput, buildAllowlistRule, ErrorCode, normalizeUrl } from '@swag/protocol';
 import type { Principal } from '../auth/principal';
 import { ApiError } from '../common/api-error';
 import { newId } from '../common/crypto';
 import { RateLimitService } from '../common/rate-limit.service';
+import { ENV, type Env } from '../config/env';
 import type { AllowedUrl } from '../generated/prisma/client';
 import { isUniqueViolation, PrismaService } from '../prisma/prisma.service';
 import { PushService } from '../push/push.service';
@@ -24,6 +25,7 @@ const toDto = (u: AllowedUrl) => ({
 @Injectable()
 export class AllowlistService {
   constructor(
+    @Inject(ENV) private readonly env: Env,
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
     private readonly rateLimit: RateLimitService,
@@ -96,6 +98,7 @@ export class AllowlistService {
 
   /** A child taps "Ask to open" on a blocked page: parents get a live event and a push. */
   async requestAccess(p: Principal, rawUrl: string) {
+    if (!this.env.FEATURE_SITES) throw ApiError.notFound('Feature');
     if (p.scope !== 'child') throw ApiError.forbidden('Only a child session can ask');
     if (!(await this.rateLimit.hit(`url-request:${p.sub}`, 5, 600))) {
       throw new ApiError(HttpStatus.TOO_MANY_REQUESTS, ErrorCode.RATE_LIMITED, 'Your parents already got your request');

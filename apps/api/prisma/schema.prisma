@@ -39,11 +39,11 @@ enum ChildStatus {
   at_friend
 }
 
+// "occupée" and "indisponible" are the same status (product decision): busy.
 enum Availability {
   available
   busy
   on_my_way
-  unavailable
 }
 
 enum RingerMode {
@@ -173,12 +173,12 @@ model PairingSession {
   id             String       @id @db.Uuid
   kind           PairingKind
   state          PairingState @default(pending)
-  familyId       String?      @map("family_id") @db.Uuid // set on claim (tablet) or creation (invite)
+  familyId       String?      @map("family_id") @db.Uuid // set at creation: the parent generates both QR pairings and invites
   createdById    String?      @map("created_by") @db.Uuid
   claimedById    String?      @map("claimed_by") @db.Uuid
   codeHash       String       @map("code_hash") // HMAC-SHA256(server pepper, short code)
-  secretHash     String?      @map("secret_hash") // tablet poll secret, SHA-256
-  deviceInfo     Json         @default("{}") @map("device_info")
+  secretHash     String?      @map("secret_hash") // tablet poll secret, SHA-256, set when the tablet joins
+  deviceInfo     Json         @default("{}") @map("device_info") // sent by the tablet when it joins
   failedAttempts Int          @default(0) @map("failed_attempts")
   expiresAt      DateTime     @map("expires_at") @db.Timestamptz
   approvedAt     DateTime?    @map("approved_at") @db.Timestamptz
@@ -312,6 +312,8 @@ model Message {
   mediaId        String?     @map("media_id") @db.Uuid
   stickerCode    String?     @map("sticker_code")
   gifRef         String?     @map("gif_ref") // Giphy ID, re-hosted in object storage
+  // Children who wrote the message together on the tablet ("who is speaking" chips).
+  speakerIds     String[]    @default([]) @map("speaker_ids") @db.Uuid
   clientMsgId    String      @map("client_msg_id") @db.Uuid
   createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz
   deletedAt      DateTime?   @map("deleted_at") @db.Timestamptz

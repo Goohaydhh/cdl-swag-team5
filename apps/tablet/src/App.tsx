@@ -1,91 +1,80 @@
-import { statusColor } from '@swag/design-tokens';
-import {
-  type AckResult,
-  type ChildStatus,
-  type ClientToServerEvents,
-  RT_NAMESPACE,
-  type ServerToClientEvents,
-} from '@swag/protocol';
-import { useEffect, useRef, useState } from 'react';
-import { io, type Socket } from 'socket.io-client';
-import './App.css';
+import { useCallback, useState } from 'react';
+import { forgetDevice, loadSession, saveSession, type DeviceSession } from './lib/session';
+import { useTablet } from './lib/useTablet';
+import { ChatScreen } from './screens/ChatScreen';
+import { DrawScreen } from './screens/DrawScreen';
+import { Pairing } from './screens/Pairing';
+import { StatusScreen } from './screens/StatusScreen';
+import { Icon } from './ui/art';
 
-// Sprint 0 status board: proves the tablet -> API -> family round trip.
-// Sprint 2 adds the SQLite outbox, profile picker and real child session tokens.
-
-const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3100';
-const familyId = import.meta.env.VITE_DEV_FAMILY_ID ?? '00000000-0000-4000-8000-000000000001';
-const childId = import.meta.env.VITE_DEV_CHILD_ID ?? '00000000-0000-4000-8000-000000000002';
-
-const buttons: { status: ChildStatus; label: string; icon: string }[] = [
-  { status: 'at_home', label: 'At home', icon: '🏠' },
-  { status: 'left_home', label: 'Left home', icon: '🚶' },
-  { status: 'at_friend', label: "At a friend's", icon: '🧒' },
-];
-
-type SendState = 'idle' | 'sending' | 'sent' | 'failed';
-
+/** The child tablet: pairing until a parent validates it, then status / chat / drawing. */
 export default function App() {
-  const socketRef = useRef<Socket<ServerToClientEvents, ClientToServerEvents> | null>(null);
-  const [connected, setConnected] = useState(false);
-  const [current, setCurrent] = useState<ChildStatus | null>(null);
-  const [sendState, setSendState] = useState<SendState>('idle');
+  const [session, setSession] = useState<DeviceSession | null>(() => loadSession());
 
-  useEffect(() => {
-    const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(
-      `${apiUrl}${RT_NAMESPACE}`,
-      { auth: { token: `dev:${familyId}:child:${childId}` } },
-    );
-    socketRef.current = socket;
-    socket.on('connect', () => setConnected(true));
-    socket.on('disconnect', () => setConnected(false));
-    return () => {
-      socket.close();
-    };
+  const paired = useCallback((s: DeviceSession) => {
+    saveSession(s);
+    setSession(s);
+  }, []);
+  const revoked = useCallback(() => {
+    forgetDevice();
+    setSession(null);
   }, []);
 
-  function send(status: ChildStatus) {
-    setCurrent(status);
-    setSendState('sending');
-    socketRef.current?.emit(
-      'status_update',
-      {
-        client_event_id: crypto.randomUUID(),
-        child_id: childId,
-        status,
-        occurred_at: new Date().toISOString(),
-      },
-      (ack: AckResult<{ event_id: string }>) => setSendState(ack.ok ? 'sent' : 'failed'),
-    );
-  }
+  if (!session) return <Pairing onPaired={paired} />;
+  return <Paired key={session.deviceId} onRevoked={revoked} />;
+}
+
+type Screen = 'status' | 'chat' | 'draw';
+
+function Paired({ onRevoked }: { onRevoked: () => void }) {
+  const t = useTablet(onRevoked);
+  const [screen, setScreen] = useState<Screen>('status');
+  const [toast, setToast] = useState<string | null>(null);
+
+  const showToast = (m: string) => {
+    setToast(m);
+    setTimeout(() => setToast(null), 2600);
+  };
 
   return (
-    <main className="board">
-      <header className="board__header">
-        <h1>Where are you?</h1>
-        <span className={connected ? 'dot dot--on' : 'dot'} aria-label={connected ? 'online' : 'offline'} />
-      </header>
-      <div className="board__buttons">
-        {buttons.map((b) => (
-          <button
-            key={b.status}
-            className={current === b.status ? 'status-btn status-btn--active' : 'status-btn'}
-            style={{ '--status-color': statusColor[b.status] } as React.CSSProperties}
-            onClick={() => send(b.status)}
-            disabled={!connected}
-          >
-            <span className="status-btn__icon" aria-hidden>
-              {b.icon}
+    <div className="app">
+      <div className="sb">
+        <span>{t.family?.name ?? 'SWAG'}</span>
+        <span className="row" style={{ gap: 8 }}>
+          {!t.online && (
+            <span className="hint" style={{ padding: '4px 14px', fontSize: 14 }}>
+              <Icon name="wifiOff" size={18} />
+              Hors ligne
             </span>
-            {b.label}
-          </button>
-        ))}
+          )}
+          <Icon name="battery" size={22} stroke={2} />
+        </span>
       </div>
-      <p className="board__feedback" role="status">
-        {sendState === 'sending' && 'Sending…'}
-        {sendState === 'sent' && 'Sent to your parents ✓'}
-        {sendState === 'failed' && 'Not sent, try again'}
-      </p>
-    </main>
+
+      {screen === 'status' && <StatusScreen t={t} />}
+      {screen === 'chat' && <ChatScreen t={t} onBack={() => setScreen('status')} onDraw={() => setScreen('draw')} />}
+      {screen === 'draw' && (
+        <DrawScreen
+          t={t}
+          onBack={() => setScreen('chat')}
+          onSent={() => (setScreen('chat'), showToast('Dessin envoyé à toute la famille !'))}
+        />
+      )}
+
+      {screen === 'status' && (
+        <div className="dock">
+          <button aria-current="true">
+            <Icon name="house" size={32} stroke={2.4} />
+            Mon statut
+          </button>
+          <button onClick={() => setScreen('chat')}>
+            <Icon name="chat" size={32} stroke={2.4} />
+            Discuter
+            {t.unread > 0 && <span className="badge">{t.unread}</span>}
+          </button>
+        </div>
+      )}
+      {toast && <div className="toast" role="status">{toast}</div>}
+    </div>
   );
 }

@@ -38,11 +38,20 @@ export class StatusService {
    * tablet's offline outbox can replay freely; `child_current_status` only moves forward in time.
    */
   async record(principal: Principal, input: StatusUpdateInput): Promise<RecordedStatus> {
-    if (principal.scope !== 'child' || input.child_id !== principal.sub) {
-      throw ApiError.forbidden('A child can only set their own status');
+    // A child token sets its own status. The tablet's device token sets the status of the
+    // children checked in the "who is speaking" chips (one call per child), if they are on it.
+    if (principal.scope === 'child') {
+      if (input.child_id !== principal.sub) throw ApiError.forbidden('A child can only set their own status');
+    } else if (principal.scope === 'device') {
+      const onTablet = await this.prisma.deviceChildProfile.count({
+        where: { deviceId: principal.dev ?? principal.sub, childProfileId: input.child_id },
+      });
+      if (!onTablet) throw ApiError.forbidden('This child is not on this tablet');
+    } else {
+      throw ApiError.forbidden('Only the tablet can set a child status');
     }
     const child = await this.prisma.childProfile.findFirst({
-      where: { id: principal.sub, familyId: principal.fam },
+      where: { id: input.child_id, familyId: principal.fam },
     });
     if (!child) throw ApiError.notFound('Child');
 

@@ -29,7 +29,7 @@ export class MediaController {
   ) {}
 
   /** Multipart field `file`: a PNG or WebP drawing, at most 1 MB. */
-  @Scopes('parent', 'child')
+  @Scopes('parent', 'child', 'device')
   @Post('media')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } }))
   upload(@CurrentPrincipal() p: Principal, @UploadedFile() file: Express.Multer.File | undefined) {
@@ -37,13 +37,13 @@ export class MediaController {
     return this.media.uploadImage(p, file.buffer);
   }
 
-  @Scopes('parent', 'child')
+  @Scopes('parent', 'child', 'device')
   @Get('media/:id')
   url(@CurrentPrincipal() p: Principal, @Param('id', UuidParam) id: string) {
     return this.media.signedUrl(p, id);
   }
 
-  @Scopes('parent', 'child')
+  @Scopes('parent', 'child', 'device')
   @Get('gifs/search')
   search(@CurrentPrincipal() p: Principal, @Query(new ZodPipe(GifSearchQuery)) q: GifSearchQuery) {
     return this.gifs.search(p, q.q, q.offset);

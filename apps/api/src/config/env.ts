@@ -32,6 +32,11 @@ const EnvSchema = z
     GIPHY_MEDIA_HOST_SUFFIX: z.string().default('.giphy.com'),
     /** Firebase service-account JSON. Unset = pushes are recorded in memory, not sent. */
     FCM_SERVICE_ACCOUNT_PATH: z.string().optional(),
+    /**
+     * Allowed websites (FR-9). Product decision: the "Sites" part is paused for now, so its
+     * routes answer 404 and the tablet's access requests are refused unless this is true.
+     */
+    FEATURE_SITES: z.stringbool().default(false),
     /** Number of reverse proxies in front of the API (Caddy = 1), for correct client IPs. */
     TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
   })

@@ -87,15 +87,24 @@ export interface PairedTablet {
   deviceToken: string;
 }
 
+/** Parent generates the code (Associer une tablette); the tablet joins with it. */
+export async function startPairing(t: TestApp, parent: Parent) {
+  const created = await api(t, parent.token).post('/pairing/sessions').send({}).expect(201);
+  return created.body as { pairing_id: string; code: string; qr_payload: string; expires_at: string };
+}
+
+export async function joinPairing(t: TestApp, body: Record<string, unknown>) {
+  const res = await api(t)
+    .post('/pairing/join')
+    .send({ device_info: { model: 'Redmi Pad 2' }, ...body })
+    .expect(200);
+  return res.body as { pairing_id: string; poll_secret: string; family: { name: string } };
+}
+
 /** Runs the full tablet pairing flow and returns a working device token. */
 export async function pairTablet(t: TestApp, parent: Parent, childIds: string[]): Promise<PairedTablet> {
-  const session = await api(t)
-    .post('/pairing/sessions')
-    .send({ device_info: { model: 'Redmi Pad 2' } })
-    .expect(201);
-  const { pairing_id, code, poll_secret } = session.body;
-
-  await api(t, parent.token).post('/pairing/claim').send({ code }).expect(200);
+  const { pairing_id, code } = await startPairing(t, parent);
+  const { poll_secret } = await joinPairing(t, { code, pairing_id });
   await api(t, parent.token)
     .post(`/pairing/sessions/${pairing_id}/approve`)
     .send({ device_name: 'Kitchen tablet', child_ids: childIds })

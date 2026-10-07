@@ -20,7 +20,7 @@ export class StatusController {
     private readonly presence: PresenceService,
   ) {}
 
-  @Scopes('child')
+  @Scopes('child', 'device')
   @Post('children/:id/status')
   @HttpCode(200)
   async postStatus(

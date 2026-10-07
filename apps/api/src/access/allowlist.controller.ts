@@ -1,11 +1,14 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, Param, Post, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, Param, Post, Res, UseGuards } from '@nestjs/common';
 import { AddAllowedUrlInput } from '@swag/protocol';
 import type { Response } from 'express';
 import { CurrentPrincipal, Scopes } from '../auth/decorators';
 import type { Principal } from '../auth/principal';
 import { UuidParam, ZodPipe } from '../common/zod.pipe';
 import { AllowlistService } from './allowlist.service';
+import { SitesEnabledGuard } from './sites-enabled.guard';
 
+/** Paused for now (product decision): every route answers 404 unless FEATURE_SITES=true. */
+@UseGuards(SitesEnabledGuard)
 @Controller()
 export class AllowlistController {
   constructor(private readonly allowlist: AllowlistService) {}

@@ -47,22 +47,51 @@ export const RefreshInput = z.object({ refresh_token: z.string().min(1).max(200)
 export type RefreshInput = z.infer<typeof RefreshInput>;
 
 // --- Pairing (section 5.2)
+//
+// Product decision: the PARENT generates the QR code and the code (Famille > Associer une
+// tablette); the TABLET scans the QR or types the code; the parent then validates the tablet.
+//
+//   parent  POST /pairing/sessions                 -> { pairing_id, code, qr_payload, expires_at }
+//   tablet  POST /pairing/join  { code, pairing_id? } -> { pairing_id, poll_secret, family }
+//   parent  GET  /pairing/sessions/:id/state?wait=25  (or the `pairing_updated` socket event)
+//   parent  POST /pairing/sessions/:id/approve | /reject
+//   tablet  GET  /pairing/sessions/:id?wait=25  + X-Pairing-Secret -> device credential (once)
 
-export const CreatePairingSessionInput = z.object({ device_info: DeviceInfo.default({}) });
+/** Body of the parent's "Associer une tablette" call. Everything is optional. */
+export const CreatePairingSessionInput = z
+  .object({
+    /** Pre-selects the children that will appear on the tablet (can be changed at approval). */
+    child_ids: z.array(id).max(20).optional(),
+  })
+  .default({});
 export type CreatePairingSessionInput = z.infer<typeof CreatePairingSessionInput>;
 
-export const ClaimPairingInput = z.object({
+/** The tablet sends what it scanned (QR) or what the child/parent typed (code). */
+export const JoinPairingInput = z.object({
   code: z.string().min(8).max(16),
   /** Present when the code came from the QR, enables per-session attempt counting. */
   pairing_id: id.optional(),
+  device_info: DeviceInfo.default({}),
 });
-export type ClaimPairingInput = z.infer<typeof ClaimPairingInput>;
+export type JoinPairingInput = z.infer<typeof JoinPairingInput>;
 
 export const ApprovePairingInput = z.object({
   device_name: z.string().trim().min(1).max(60),
-  child_ids: z.array(id).min(1).max(20),
+  /** Omit to show every child of the family on the tablet. */
+  child_ids: z.array(id).min(1).max(20).optional(),
 });
 export type ApprovePairingInput = z.infer<typeof ApprovePairingInput>;
+
+/** Parses `swag://pair?p=<pairing_id>&c=<code>` from the parent's QR code. */
+export function parsePairingQr(payload: string): { pairing_id: string; code: string } | null {
+  const match = /^swag:\/\/pair\?(.+)$/.exec(payload.trim());
+  if (!match) return null;
+  const params = new URLSearchParams(match[1]);
+  const pairingId = params.get('p');
+  const code = params.get('c');
+  if (!pairingId || !code || !z.uuid().safeParse(pairingId).success) return null;
+  return { pairing_id: pairingId, code };
+}
 
 export const AcceptInviteInput = z.object({
   code: z.string().min(8).max(16),
@@ -126,12 +155,7 @@ export const ChildSessionInput = z.object({
 });
 export type ChildSessionInput = z.infer<typeof ChildSessionInput>;
 
-// --- Chat (FR-10 to FR-12)
-
-export const OpenConversationInput = z.object({
-  member: z.object({ type: z.enum(['user', 'child']), id }),
-});
-export type OpenConversationInput = z.infer<typeof OpenConversationInput>;
+// --- Chat (FR-10 to FR-12). Product decision: one conversation only, the family group chat.
 
 export const MessagesQuery = z.object({
   before: id.optional(),

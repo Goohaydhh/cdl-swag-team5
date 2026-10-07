@@ -30,29 +30,23 @@ const owner = await call('POST', '/auth/register', {
 });
 const parentToken = owner.tokens.access_token;
 
-const lea = await call('POST', '/children', { display_name: 'Léa', avatar_key: 'fox', color: '#FF7043' }, parentToken);
-const tom = await call(
-  'POST',
-  '/children',
-  { display_name: 'Tom', avatar_key: 'panda', color: '#42A5F5', pin: '1234' },
-  parentToken,
-);
+// Avatars and colours match the SWAG design (Gremlin mascots).
+const lea = await call('POST', '/children', { display_name: 'Léa', avatar_key: 'gremlin-pink', color: '#F472B6' }, parentToken);
+const tom = await call('POST', '/children', { display_name: 'Tom', avatar_key: 'gremlin-blue', color: '#3B9BF0' }, parentToken);
+const ines = await call('POST', '/children', { display_name: 'Inès', avatar_key: 'gremlin-orange', color: '#FF8A3D' }, parentToken);
 
-const pairing = await call('POST', '/pairing/sessions', { device_info: { model: 'Redmi Pad 2 (seed)' } });
-await call('POST', '/pairing/claim', { code: pairing.code }, parentToken);
-await call(
-  'POST',
-  `/pairing/sessions/${pairing.pairing_id}/approve`,
-  { device_name: 'Kitchen tablet', child_ids: [lea.id, tom.id] },
-  parentToken,
-);
+// Same flow as the apps: the parent generates the code, the tablet joins, the parent validates.
+const pairing = await call('POST', '/pairing/sessions', {}, parentToken);
+const joined = await call('POST', '/pairing/join', {
+  code: pairing.code,
+  pairing_id: pairing.pairing_id,
+  device_info: { model: 'Redmi Pad 2 (seed)' },
+});
+await call('POST', `/pairing/sessions/${pairing.pairing_id}/approve`, { device_name: 'Tablette du salon' }, parentToken);
 const paired = await call('GET', `/pairing/sessions/${pairing.pairing_id}?wait=0`, null, null, {
-  'x-pairing-secret': pairing.poll_secret,
+  'x-pairing-secret': joined.poll_secret,
 });
 const device = await call('POST', '/device/token', { device_id: paired.device_id, credential: paired.credential });
-const leaSession = await call('POST', '/device/child-session', { child_id: lea.id }, device.access_token);
-
-await call('POST', '/allowed-urls', { url: 'fr.vikidia.org', title: 'Vikidia' }, parentToken);
 
 console.log(`
 Demo family "Martin" created.
@@ -61,15 +55,16 @@ Parent app login
   email:     ${email}
   password:  ${password}
 
-Tablet (store these like a paired tablet would)
+Tablet (already paired; or pair a fresh one from the parent app: Famille > Associer une tablette)
   device_id:   ${paired.device_id}
   credential:  ${device.credential}
 
-Children
-  Léa  ${lea.id}  (no PIN)
-  Tom  ${tom.id}  (PIN 1234)
+Children (all three on the tablet)
+  Léa   ${lea.id}
+  Tom   ${tom.id}
+  Inès  ${ines.id}
 
-Short-lived tokens for quick tests (30 min / 15 min)
-  Léa child token:  ${leaSession.access_token}
-  parent token:     ${parentToken}
+Short-lived tokens for quick tests (15 min)
+  tablet token:  ${device.access_token}
+  parent token:  ${parentToken}
 `);

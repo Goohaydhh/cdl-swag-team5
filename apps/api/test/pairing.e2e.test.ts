@@ -1,11 +1,17 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { parsePairingQr } from '@swag/protocol';
 import {
   api,
   childToken,
+  connectSocket,
   createChild,
   createTestApp,
+  joinPairing,
+  nextEvent,
+  type Parent,
   pairTablet,
   registerParent,
+  startPairing,
   type TestApp,
 } from './helpers';
 
@@ -15,61 +21,98 @@ beforeAll(async () => {
 });
 afterAll(() => t.close());
 
-async function startPairing() {
-  const res = await api(t).post('/pairing/sessions').send({ device_info: { model: 'Redmi Pad 2' } }).expect(201);
-  expect(res.body.code).toMatch(/^[0-9A-Z]{4}-[0-9A-Z]{4}$/);
-  expect(res.body.qr_payload).toContain(res.body.pairing_id);
-  return res.body as { pairing_id: string; code: string; poll_secret: string };
+async function start(parent: Parent) {
+  const s = await startPairing(t, parent);
+  expect(s.code).toMatch(/^[0-9A-Z]{4}-[0-9A-Z]{4}$/);
+  expect(s.qr_payload).toBe(`swag://pair?p=${s.pairing_id}&c=${s.code.replace('-', '')}`);
+  expect(parsePairingQr(s.qr_payload)).toEqual({ pairing_id: s.pairing_id, code: s.code.replace('-', '') });
+  return s;
 }
 
 const poll = (pairingId: string, secret: string) =>
   api(t).get(`/pairing/sessions/${pairingId}?wait=0`).set('X-Pairing-Secret', secret);
+const parentState = (parent: Parent, pairingId: string) =>
+  api(t, parent.token).get(`/pairing/sessions/${pairingId}/state?wait=0`);
 
-describe('tablet pairing (FR-1, FR-2)', () => {
-  it('pairs a tablet end to end and hands out the credential exactly once', async () => {
+describe('tablet pairing, parent generates the code (FR-1, FR-2)', () => {
+  it('parent QR -> tablet scans -> parent validates -> tablet gets its credential once', async () => {
     const parent = await registerParent(t);
     const child = await createChild(t, parent);
-    const s = await startPairing();
+    const s = await start(parent);
+    expect((await parentState(parent, s.pairing_id).expect(200)).body.state).toBe('pending');
 
-    expect((await poll(s.pairing_id, s.poll_secret).expect(200)).body.state).toBe('pending');
+    // The parent's screen hears the tablet arrive.
+    const socket = await connectSocket(t, parent.token);
+    const heard = nextEvent<{ data: { pairing_id: string; state: string; device_info: { model: string } } }>(
+      socket,
+      'pairing_updated',
+    );
+    const qr = parsePairingQr(s.qr_payload)!;
+    const joined = await joinPairing(t, { code: qr.code, pairing_id: qr.pairing_id });
+    expect(joined.family.name).toBe('Martin');
+    expect((await heard).data).toEqual({ pairing_id: s.pairing_id, state: 'claimed', device_info: { model: 'Redmi Pad 2' } });
+    socket.close();
 
-    // Typed code: lower case, no dash, with the O/0 look-alike tolerated.
-    const typed = s.code.replace('-', '').toLowerCase();
-    const claim = await api(t, parent.token).post('/pairing/claim').send({ code: typed }).expect(200);
-    expect(claim.body.device_info.model).toBe('Redmi Pad 2');
+    const state = await parentState(parent, s.pairing_id).expect(200);
+    expect(state.body).toMatchObject({ state: 'claimed', device_info: { model: 'Redmi Pad 2' } });
+    expect((await poll(s.pairing_id, joined.poll_secret).expect(200)).body.state).toBe('claimed');
 
     await api(t, parent.token)
       .post(`/pairing/sessions/${s.pairing_id}/approve`)
-      .send({ device_name: 'Kitchen tablet', child_ids: [child.id] })
+      .send({ device_name: 'Tablette du salon' })
       .expect(200);
 
-    const first = await poll(s.pairing_id, s.poll_secret).expect(200);
+    const first = await poll(s.pairing_id, joined.poll_secret).expect(200);
     expect(first.body.state).toBe('approved');
     expect(first.body.credential).toMatch(/^dc_/);
     expect(first.body.family.name).toBe('Martin');
-    expect((await poll(s.pairing_id, s.poll_secret).expect(200)).body.state).toBe('consumed');
+    expect((await poll(s.pairing_id, joined.poll_secret).expect(200)).body.state).toBe('consumed');
+
+    // Without child_ids, every child of the family is on the tablet.
+    const devices = await api(t, parent.token).get('/devices').expect(200);
+    const tablet = devices.body.find((d: { id: string }) => d.id === first.body.device_id);
+    expect(tablet).toMatchObject({ name: 'Tablette du salon', child_ids: [child.id], platform_info: { model: 'Redmi Pad 2' } });
+  });
+
+  it('the code can be typed on the tablet: lower case, no dash, O/0 look-alikes tolerated', async () => {
+    const parent = await registerParent(t);
+    await createChild(t, parent);
+    const s = await start(parent);
+    const typed = s.code.replace('-', '').toLowerCase();
+    const joined = await joinPairing(t, { code: typed });
+    expect(joined.pairing_id).toBe(s.pairing_id);
+  });
+
+  it('only parents can generate a code', async () => {
+    await api(t).post('/pairing/sessions').send({}).expect(401);
+    const parent = await registerParent(t);
+    const child = await createChild(t, parent);
+    const tablet = await pairTablet(t, parent, [child.id]);
+    await api(t, tablet.deviceToken).post('/pairing/sessions').send({}).expect(403);
   });
 
   it('never reveals the session to a poller without the secret', async () => {
-    const s = await startPairing();
-    await poll(s.pairing_id, 'wrong-secret').expect(404);
+    const parent = await registerParent(t);
+    const s = await start(parent);
+    const joined = await joinPairing(t, { code: s.code });
+    await poll(joined.pairing_id, 'wrong-secret').expect(404);
   });
 
-  it('a code can only be claimed once', async () => {
-    const a = await registerParent(t);
-    const b = await registerParent(t);
-    const s = await startPairing();
-    await api(t, a.token).post('/pairing/claim').send({ code: s.code }).expect(200);
-    const res = await api(t, b.token).post('/pairing/claim').send({ code: s.code }).expect(404);
+  it('a code can only be used by one tablet', async () => {
+    const parent = await registerParent(t);
+    const s = await start(parent);
+    await joinPairing(t, { code: s.code });
+    const res = await api(t).post('/pairing/join').send({ code: s.code }).expect(404);
     expect(res.body.error.code).toBe('PAIRING_NOT_FOUND');
   });
 
-  it('another family cannot approve a session it did not claim', async () => {
+  it("another family cannot see or approve the session", async () => {
     const a = await registerParent(t);
     const b = await registerParent(t);
     const childB = await createChild(t, b);
-    const s = await startPairing();
-    await api(t, a.token).post('/pairing/claim').send({ code: s.code }).expect(200);
+    const s = await start(a);
+    await joinPairing(t, { code: s.code });
+    await parentState(b, s.pairing_id).expect(404);
     await api(t, b.token)
       .post(`/pairing/sessions/${s.pairing_id}/approve`)
       .send({ device_name: 'X', child_ids: [childB.id] })
@@ -80,34 +123,42 @@ describe('tablet pairing (FR-1, FR-2)', () => {
     const a = await registerParent(t);
     const b = await registerParent(t);
     const childB = await createChild(t, b);
-    const s = await startPairing();
-    await api(t, a.token).post('/pairing/claim').send({ code: s.code }).expect(200);
+    const s = await start(a);
+    await joinPairing(t, { code: s.code });
     await api(t, a.token)
       .post(`/pairing/sessions/${s.pairing_id}/approve`)
       .send({ device_name: 'X', child_ids: [childB.id] })
       .expect(400);
   });
 
-  it('locks a QR session after 5 wrong codes', async () => {
+  it('cannot approve before a tablet joined', async () => {
     const parent = await registerParent(t);
-    const s = await startPairing();
-    for (let i = 0; i < 5; i++) {
-      await api(t, parent.token)
-        .post('/pairing/claim')
-        .send({ code: 'AAAA-AAAA', pairing_id: s.pairing_id })
-        .expect(404);
-    }
-    // Even the right code no longer works.
-    await api(t, parent.token).post('/pairing/claim').send({ code: s.code, pairing_id: s.pairing_id }).expect(404);
-    expect((await poll(s.pairing_id, s.poll_secret).expect(200)).body.state).toBe('rejected');
+    await createChild(t, parent);
+    const s = await start(parent);
+    await api(t, parent.token).post(`/pairing/sessions/${s.pairing_id}/approve`).send({ device_name: 'X' }).expect(404);
   });
 
-  it('a rejected pairing tells the tablet', async () => {
+  it('locks a QR session after 5 wrong codes', async () => {
     const parent = await registerParent(t);
-    const s = await startPairing();
-    await api(t, parent.token).post('/pairing/claim').send({ code: s.code }).expect(200);
+    const s = await start(parent);
+    for (let i = 0; i < 5; i++) {
+      await api(t).post('/pairing/join').send({ code: 'AAAA-AAAA', pairing_id: s.pairing_id }).expect(404);
+    }
+    // Even the right code no longer works.
+    await api(t).post('/pairing/join').send({ code: s.code, pairing_id: s.pairing_id }).expect(404);
+    expect((await parentState(parent, s.pairing_id).expect(200)).body.state).toBe('rejected');
+  });
+
+  it('a rejected pairing tells the tablet, and the parent can cancel an unused code', async () => {
+    const parent = await registerParent(t);
+    const s = await start(parent);
+    const joined = await joinPairing(t, { code: s.code });
     await api(t, parent.token).post(`/pairing/sessions/${s.pairing_id}/reject`).expect(204);
-    expect((await poll(s.pairing_id, s.poll_secret).expect(200)).body.state).toBe('rejected');
+    expect((await poll(s.pairing_id, joined.poll_secret).expect(200)).body.state).toBe('rejected');
+
+    const unused = await start(parent);
+    await api(t, parent.token).post(`/pairing/sessions/${unused.pairing_id}/reject`).expect(204);
+    await api(t).post('/pairing/join').send({ code: unused.code }).expect(404);
   });
 });
 
@@ -134,7 +185,10 @@ describe('devices and child sessions (FR-4)', () => {
 
     let profiles = await api(t, tablet.deviceToken).get('/device/profiles').expect(200);
     expect(profiles.body.children.map((c: { id: string }) => c.id)).toEqual([lea.id]);
+    expect(profiles.body.children[0].status).toBeNull();
     expect(profiles.body.parents).toHaveLength(1);
+    expect(profiles.body.parents[0]).toMatchObject({ availability: 'available', eta_minutes: null, ringer: 'unknown' });
+    expect(profiles.body.device.name).toBe('Kitchen tablet');
 
     await api(t, parent.token).patch(`/devices/${tablet.deviceId}`).send({ child_ids: [lea.id, tom.id] }).expect(200);
     profiles = await api(t, tablet.deviceToken).get('/device/profiles').expect(200);
