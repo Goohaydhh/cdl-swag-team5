@@ -1,0 +1,61 @@
+# Runs on every push and merge request: build, type checks, unit tests and the API's end-to-end
+# tests against real PostgreSQL, Redis and S3 (RustFS) service containers.
+stages:
+  - check
+  - package
+
+default:
+  image: node:22-bookworm-slim
+
+variables:
+  CI: 'true'
+  PNPM_STORE_DIR: .pnpm-store
+  # API end-to-end tests reach the service containers by their aliases.
+  TEST_PG_HOST: postgres
+  TEST_REDIS_HOST: redis
+  TEST_S3_ENDPOINT: http://s3:9000
+  # prisma generate reads it from prisma.config.ts; nothing connects with it.
+  DATABASE_URL: postgresql://swag:swag@postgres:5432/swag
+
+.pnpm:
+  before_script:
+    - corepack enable
+    - pnpm config set store-dir "$PNPM_STORE_DIR"
+    - pnpm install --frozen-lockfile
+  cache:
+    key:
+      files: [pnpm-lock.yaml]
+    paths: [.pnpm-store]
+
+check:
+  stage: check
+  extends: .pnpm
+  services:
+    - name: postgres:16-alpine
+      alias: postgres
+      variables:
+        POSTGRES_USER: swag
+        POSTGRES_PASSWORD: swag
+        POSTGRES_DB: swag
+    - name: redis:7-alpine
+      alias: redis
+    - name: rustfs/rustfs:latest
+      alias: s3
+      variables:
+        RUSTFS_ACCESS_KEY: swag
+        RUSTFS_SECRET_KEY: swag-dev-secret
+  script:
+    - pnpm turbo run build typecheck test --filter='!@swag/parent'
+    - pnpm --filter @swag/parent typecheck
+
+# Builds the API image on main to prove the Dockerfile still works (no registry push yet).
+api-image:
+  stage: package
+  image: docker:27
+  services: [docker:27-dind]
+  variables:
+    DOCKER_TLS_CERTDIR: '/certs'
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - docker build -f apps/api/Dockerfile -t swag-api:$CI_COMMIT_SHORT_SHA .

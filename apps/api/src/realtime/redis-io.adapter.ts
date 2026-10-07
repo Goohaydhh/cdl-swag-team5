@@ -8,7 +8,10 @@ import type { Server, ServerOptions } from 'socket.io';
 export class RedisIoAdapter extends IoAdapter {
   private adapterConstructor: ReturnType<typeof createAdapter> | undefined;
 
-  constructor(app: INestApplicationContext) {
+  constructor(
+    app: INestApplicationContext,
+    private readonly corsOrigins: string[],
+  ) {
     super(app);
   }
 
@@ -20,7 +23,12 @@ export class RedisIoAdapter extends IoAdapter {
   }
 
   override createIOServer(port: number, options?: ServerOptions): Server {
-    const server: Server = super.createIOServer(port, options);
+    const server: Server = super.createIOServer(port, {
+      ...options,
+      cors: { origin: this.corsOrigins, credentials: false },
+      // Chat bodies are capped at 2000 characters; drawings go over REST.
+      maxHttpBufferSize: 64 * 1024,
+    } as ServerOptions);
     if (this.adapterConstructor) server.adapter(this.adapterConstructor);
     return server;
   }

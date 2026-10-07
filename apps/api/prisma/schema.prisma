@@ -262,6 +262,8 @@ model Conversation {
   id        String   @id @db.Uuid
   familyId  String   @map("family_id") @db.Uuid
   isGroup   Boolean  @default(false) @map("is_group")
+  /// Direct threads only: the two members as sorted "type:id|type:id", so a pair has one thread.
+  directKey String?  @unique @map("direct_key")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   family   Family               @relation(fields: [familyId], references: [id], onDelete: Cascade)

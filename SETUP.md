@@ -39,10 +39,10 @@ pnpm --filter @swag/tablet dev                :: tablet UI in the browser (Vite)
 pnpm --filter @swag/parent start              :: parent app via Expo
 ```
 
-- Smoke test of the real-time path (API running): `pnpm --filter @swag/api smoke:rt`
+- Backend tests: `pnpm --filter @swag/api test`. Demo family with working logins (API running): `pnpm --filter @swag/api seed:dev`. Full API reference: [apps/api/README.md](apps/api/README.md).
 - Tablet on Android: `pnpm --filter @swag/tablet build && pnpm --filter @swag/tablet cap:sync`, then `cap:open` (Android Studio) or `apps\tablet\android\gradlew assembleDebug`.
 - Port 3100 is used because 3000 is often taken; change `PORT` in `apps/api/.env` if needed.
-- Until pairing lands (Sprint 1), both apps connect with a development token `dev:<familyId>:<scope>:<id>`, refused when `NODE_ENV=production`.
+- The apps must sign in for real (parent login, tablet pairing); use `seed:dev` to get credentials. The old `dev:` socket tokens still connect locally (`ALLOW_DEV_TOKENS=true`) but cannot write data.
 
 ## Workspace layout
 

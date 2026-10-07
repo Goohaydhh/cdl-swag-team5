@@ -38,3 +38,11 @@ Thumbs.db
 
 # Generated Prisma client
 apps/api/src/generated/
+
+# Locally generated JWT signing keys
+apps/api/keys/
+
+# Production secrets and env
+deploy/secrets/
+deploy/.env.production
+.test-run.log

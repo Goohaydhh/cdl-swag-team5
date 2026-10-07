@@ -1,0 +1,22 @@
+.git
+**/node_modules
+**/dist
+**/.turbo
+**/.expo
+**/.env
+**/.env.*
+!**/.env.example
+*.log
+.test-run.log
+.vscode
+
+
+# Secrets and generated code never enter the image
+apps/api/keys
+apps/api/src/generated
+
+# Only the API is built; keep the other apps' manifests so the lockfile still matches
+apps/parent/*
+!apps/parent/package.json
+apps/tablet/*
+!apps/tablet/package.json

@@ -1,0 +1,16 @@
+# TLS (automatic Let's Encrypt certificates) in front of the API. WebSockets pass through as-is.
+# Caddy already redacts Authorization and Cookie headers in its logs.
+{$API_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy api:3100
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	log {
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				request>headers>X-Pairing-Secret delete
+			}
+		}
+	}
+}
