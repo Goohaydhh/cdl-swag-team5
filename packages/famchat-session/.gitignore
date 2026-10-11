@@ -1,0 +1,9 @@
+famchat-tablette/
+famchat-telephone/
+*.p12
+build/
+*.class
+.gradle/
+.idea/
+local.properties
+dist/invitation.png
