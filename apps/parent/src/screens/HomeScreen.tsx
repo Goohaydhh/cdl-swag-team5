@@ -1,5 +1,5 @@
 import { availabilityColor, availabilityLabel, statusColor, statusLabel, statusSoftColor } from '@swag/design-tokens';
-import type { Availability } from '@swag/protocol';
+import type { Availability, RingerMode } from '@swag/protocol';
 import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { relativeTime, todayLabel } from '../lib/format';
@@ -76,7 +76,10 @@ export function HomeScreen({ f }: { f: Family }) {
         <Card style={{ padding: 14, gap: 12 }}>
           {o.parents.map((p, i) => (
             <View key={p.id} style={s.row}>
-              <Initial name={p.display_name} color={PARENT_COLORS[i % PARENT_COLORS.length]!} />
+              <View>
+                <Initial name={p.display_name} color={PARENT_COLORS[i % PARENT_COLORS.length]!} />
+                <RingerBadge mode={p.ringer} />
+              </View>
               <View style={s.grow}>
                 <Text style={s.strong}>{p.display_name}{p.id === f.me ? ' (moi)' : ''}</Text>
                 <View style={[s.row, { gap: 6 }]}>
@@ -87,12 +90,6 @@ export function HomeScreen({ f }: { f: Family }) {
                   </Text>
                 </View>
               </View>
-              {p.ringer === 'silent' && (
-                <View style={[s.row, { gap: 6, backgroundColor: C.background, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }]}>
-                  <Icon name="bellOff" size={16} color={C.inkSoft} />
-                  <Text style={s.cap}>Silencieux</Text>
-                </View>
-              )}
             </View>
           ))}
         </Card>
@@ -132,5 +129,25 @@ export function HomeScreen({ f }: { f: Family }) {
         </Card>
       )}
     </ScrollView>
+  );
+}
+
+const RINGER_BADGE: Partial<Record<RingerMode, { icon: IconName; label: string }>> = {
+  silent: { icon: 'bellOff', label: 'Téléphone en silencieux' },
+  vibrate: { icon: 'vibrate', label: 'Téléphone en vibreur' },
+};
+
+/** FR-13: small badge on a parent's avatar when their phone won't ring. */
+function RingerBadge({ mode }: { mode: RingerMode }) {
+  const b = RINGER_BADGE[mode];
+  if (!b) return null;
+  return (
+    <View
+      accessible
+      accessibilityLabel={b.label}
+      style={{ position: 'absolute', right: -4, bottom: -4, width: 22, height: 22, borderRadius: 11, backgroundColor: C.surface, borderWidth: 2, borderColor: C.background, alignItems: 'center', justifyContent: 'center' }}
+    >
+      <Icon name={b.icon} size={13} color={C.inkSoft} stroke={2.4} />
+    </View>
   );
 }
