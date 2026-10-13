@@ -1,6 +1,7 @@
-import { availabilityColor, availabilityLabel, statusChildLabel, statusColor } from '@swag/design-tokens';
+import { availabilityColor, availabilityLabel, etaLabel, statusChildLabel, statusColor } from '@swag/design-tokens';
 import { speakerLabel } from '@swag/client';
 import type { ChildStatus, RingerMode } from '@swag/protocol';
+import { useEffect, useState } from 'react';
 import type { Tablet } from '../lib/useTablet';
 import { GremlinStack, Icon, type IconName, Initial } from '../ui/art';
 import { kidColor, PARENT_COLORS } from '../ui/colors';
@@ -12,11 +13,24 @@ const TILES: { status: ChildStatus; icon: IconName }[] = [
   { status: 'at_friend', icon: 'users' },
 ];
 
+/** The current time, refreshed every 30 s while an "En route" countdown is on screen. */
+function useNow(ticking: boolean) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (!ticking) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, [ticking]);
+  return now;
+}
+
 /** K4/K5 "Mon statut": who is speaking, the parents' availability, three big status tiles. */
 export function StatusScreen({ t }: { t: Tablet }) {
   const speaking = t.kids.filter((k) => t.who.includes(k.id));
   const names = speaking.length >= 3 ? 'les enfants' : speakerLabel(speaking.map((k) => k.display_name));
   const parentNames = speakerLabel(t.parents.map((p) => p.display_name)) || 'tes parents';
+  const now = useNow(t.parents.some((p) => p.availability === 'on_my_way' && !!p.eta_minutes));
 
   return (
     <>
@@ -44,7 +58,7 @@ export function StatusScreen({ t }: { t: Tablet }) {
                   <div className="cap row" style={{ gap: 6 }}>
                     <i style={{ width: 12, height: 12, borderRadius: '50%', background: availabilityColor[p.availability] }} />
                     {availabilityLabel[p.availability]}
-                    {p.availability === 'on_my_way' && p.eta_minutes ? ` · ${p.eta_minutes} min` : ''}
+                    {p.availability === 'on_my_way' && p.eta_minutes ? ` · ${etaLabel(p.eta_minutes, p.availability_at, now)}` : ''}
                   </div>
                 </div>
               </div>

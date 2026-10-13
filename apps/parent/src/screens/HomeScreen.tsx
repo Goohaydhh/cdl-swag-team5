@@ -1,6 +1,6 @@
-import { availabilityColor, availabilityLabel, statusColor, statusLabel, statusSoftColor } from '@swag/design-tokens';
+import { availabilityColor, availabilityLabel, etaLabel, statusColor, statusLabel, statusSoftColor } from '@swag/design-tokens';
 import type { Availability, RingerMode } from '@swag/protocol';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { relativeTime, todayLabel } from '../lib/format';
 import { api } from '../lib/session';
@@ -19,9 +19,11 @@ export function HomeScreen({ f }: { f: Family }) {
   const o = f.overview;
   const mine = o?.parents.find((p) => p.id === f.me);
   const myName = mine?.display_name ?? '';
+  const now = useNow(o?.parents.some((p) => p.availability === 'on_my_way' && p.eta_minutes));
 
   const setAvail = async (status: Availability, eta?: number) => {
-    f.setOverview((ov) => ov && { ...ov, parents: ov.parents.map((p) => (p.id === f.me ? { ...p, availability: status, eta_minutes: eta ?? null } : p)) });
+    const at = new Date().toISOString();
+    f.setOverview((ov) => ov && { ...ov, parents: ov.parents.map((p) => (p.id === f.me ? { ...p, availability: status, eta_minutes: eta ?? null, availability_at: at } : p)) });
     setEtaOpen(false);
     await api.setAvailability(status, eta).catch(() => f.reload());
   };
@@ -86,7 +88,7 @@ export function HomeScreen({ f }: { f: Family }) {
                   <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: availabilityColor[p.availability] }} />
                   <Text style={s.cap}>
                     {availabilityLabel[p.availability]}
-                    {p.availability === 'on_my_way' && p.eta_minutes ? ` · ${p.eta_minutes} min` : ''}
+                    {p.availability === 'on_my_way' && p.eta_minutes ? ` · ${etaLabel(p.eta_minutes, p.availability_at, now)}` : ''}
                   </Text>
                 </View>
               </View>
@@ -130,6 +132,18 @@ export function HomeScreen({ f }: { f: Family }) {
       )}
     </ScrollView>
   );
+}
+
+/** The current time, refreshed every 30 s while an "En route" countdown is on screen. */
+function useNow(ticking: boolean | undefined) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (!ticking) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, [ticking]);
+  return now;
 }
 
 const RINGER_BADGE: Partial<Record<RingerMode, { icon: IconName; label: string }>> = {

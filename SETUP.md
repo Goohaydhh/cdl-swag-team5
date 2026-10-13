@@ -67,3 +67,12 @@ In development the tablet's Vite server is also a gateway: `/v1` (API), `/socket
 4. Parent app on a phone: put the same link in `apps/parent/.env` as `EXPO_PUBLIC_API_URL=https://….ngrok-free.app`, then `pnpm --filter @swag/parent start -- --tunnel` and scan the QR code with Expo Go.
 
 Do not set `VITE_API_URL` in `apps/tablet/.env` for this: without it, the tablet uses the page's own address. The link changes every time ngrok restarts (a free static domain avoids that: `ngrok http --url=<your-domain> 5173`).
+
+## Notifications and the home-screen widget (parent app, Android)
+
+The parent app gets data-only Firebase (FCM) pushes. Each push carries IDs only. A background task then fetches the details over the API, refreshes the home-screen widget and shows the notification ("Léa · À la maison"). This works even when the app is closed. Both need an Android dev build (`pnpm android` in `apps/parent`), not Expo Go.
+
+1. In the [Firebase console](https://console.firebase.google.com), create a project and add an Android app with the package `fr.centraledigitallab.swag.parent`.
+2. Download its `google-services.json` into `apps/parent/`, then rebuild the app. Without that file the app still builds, but it gets no push token.
+3. In Project settings → Service accounts, generate a private key. Save it outside the repo and set `FCM_SERVICE_ACCOUNT_PATH` to its path in `apps/api/.env`. Without it the API only records pushes in memory.
+4. Sign in on the phone and allow notifications. Add the widget: long-press the home screen → Widgets → "SWAG – Enfants".

@@ -115,7 +115,7 @@ export interface DeviceProfilesDto {
   family: { id: string; name: string };
   device: { id: string; name: string };
   children: (ChildDto & { status: { status: ChildStatus; occurred_at: string } | null })[];
-  parents: (ParentDto & { availability: Availability; eta_minutes: number | null; ringer: RingerMode })[];
+  parents: (ParentDto & { availability: Availability; eta_minutes: number | null; availability_at: string | null; ringer: RingerMode })[];
 }
 
 export interface ConversationDto {

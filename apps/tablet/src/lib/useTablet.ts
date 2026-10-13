@@ -16,7 +16,15 @@ import { api, DeviceRevokedError, getAccessToken } from './session';
 import { load, save } from './storage';
 
 export type Kid = DeviceProfilesDto['children'][number];
-export type Parent = { id: string; display_name: string; availability: Availability; eta_minutes: number | null; ringer: RingerMode };
+export type Parent = {
+  id: string;
+  display_name: string;
+  availability: Availability;
+  eta_minutes: number | null;
+  /** When the availability (and so the ETA countdown) was set. */
+  availability_at: string | null;
+  ringer: RingerMode;
+};
 export interface StatusInfo { status: ChildStatus; occurred_at: string }
 /** A message on screen: confirmed by the server, or still in the outbox. */
 export type ChatItem = Message & { pending?: boolean };
@@ -111,7 +119,11 @@ export function useTablet(onRevoked: () => void) {
         );
         socket.on('availability_updated', ({ data }) =>
           setParents((ps) =>
-            ps.map((p) => (p.id === data.user_id ? { ...p, availability: data.status, eta_minutes: data.eta_minutes ?? null } : p)),
+            ps.map((p) =>
+              p.id === data.user_id
+                ? { ...p, availability: data.status, eta_minutes: data.eta_minutes ?? null, availability_at: data.updated_at }
+                : p,
+            ),
           ),
         );
         socket.on('ringer_updated', ({ data }) =>

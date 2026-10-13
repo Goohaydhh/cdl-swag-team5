@@ -85,6 +85,7 @@ export class GifsService {
       throw ApiError.notFound('GIF');
     }
     const meta = await this.meta(gifId);
+    if (meta.rating !== 'g') throw ApiError.notFound('GIF');
     return { data: await this.download(meta.preview_url), mime: 'image/gif' };
   }
 

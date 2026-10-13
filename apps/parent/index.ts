@@ -1,5 +1,8 @@
 import { registerRootComponent } from 'expo';
 
+// Defines the background push task: must load before the app so it also runs headless.
+import './src/lib/push';
+
 import App from './App';
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);
