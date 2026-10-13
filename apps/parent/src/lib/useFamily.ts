@@ -3,6 +3,7 @@ import {
   type ClientToServerEvents,
   type Message,
   type PairingState,
+  type RingerMode,
   RT_NAMESPACE,
   type ServerToClientEvents,
 } from '@swag/protocol';
@@ -10,6 +11,7 @@ import { randomUUID } from 'expo-crypto';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { io, type Socket } from 'socket.io-client';
+import { addRingerListener, getRingerMode, ringerSupported } from '../../modules/ringer-mode';
 import { API_URL } from './config';
 import { accessToken, api, getSession } from './session';
 
@@ -56,8 +58,21 @@ export function useFamily() {
       transports: ['websocket'],
     });
     socketRef.current = socket;
+
+    // FR-13: tell the family when my phone is on silent or vibrate. Android builds only.
+    let lastRinger: RingerMode | null = null;
+    const reportRinger = (force = false) => {
+      if (!ringerSupported || !socket?.connected) return;
+      const mode = getRingerMode();
+      if (!force && mode === lastRinger) return;
+      lastRinger = mode;
+      socket.emit('ringer_status', { mode, changed_at: new Date().toISOString() }, () => undefined);
+    };
+    const ringerSub = addRingerListener(() => reportRinger());
+
     socket.on('connect', () => {
       setOnline(true);
+      reportRinger(true);
       void reload().catch(() => undefined);
     });
     socket.on('disconnect', () => setOnline(false));
@@ -110,10 +125,13 @@ export function useFamily() {
     });
 
     const sub = AppState.addEventListener('change', (st) => {
-      if (st === 'active') void reload().catch(() => undefined);
+      if (st !== 'active') return;
+      reportRinger();
+      void reload().catch(() => undefined);
     });
     return () => {
       sub.remove();
+      ringerSub?.remove();
       socket?.close();
       socketRef.current = null;
     };
