@@ -1,15 +1,27 @@
 import { gremlinAvatars } from '@swag/design-tokens';
 import { useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { relativeTime } from '../lib/format';
 import { api, signOut } from '../lib/session';
 import type { Family } from '../lib/useFamily';
-import { Gremlin, Icon, kidColor } from '../ui/art';
+import type { AvatarTarget } from './AvatarEditor';
+import { Gremlin, Icon } from '../ui/art';
+import { KidPic } from '../ui/AvatarPic';
 import { Button, Card } from '../ui/kit';
 import { C, F, s } from '../ui/theme';
 
 /** P7 "Famille et appareils": children, the pairing entry point, tablets and phones. */
-export function FamilyScreen({ f, onPair, onValidate }: { f: Family; onPair: () => void; onValidate: () => void }) {
+export function FamilyScreen({
+  f,
+  onPair,
+  onValidate,
+  onAvatar,
+}: {
+  f: Family;
+  onPair: () => void;
+  onValidate: () => void;
+  onAvatar: (t: AvatarTarget) => void;
+}) {
   const [adding, setAdding] = useState(false);
   const tablets = f.devices.filter((d) => d.kind === 'child_tablet');
   const phones = f.devices.filter((d) => d.kind === 'parent_phone');
@@ -20,6 +32,8 @@ export function FamilyScreen({ f, onPair, onValidate }: { f: Family; onPair: () 
       { text: 'Annuler', style: 'cancel' },
       { text: 'Retirer', style: 'destructive', onPress: () => void api.revokeDevice(id).then(f.reload) },
     ]);
+
+  const allowCamera = (id: string, on: boolean) => void api.updateChild(id, { avatar_camera_allowed: on }).then(f.reload, f.reload);
 
   return (
     <ScrollView contentContainerStyle={s.page}>
@@ -50,11 +64,34 @@ export function FamilyScreen({ f, onPair, onValidate }: { f: Family; onPair: () 
       </View>
       <Card style={{ paddingVertical: 4 }}>
         {f.family?.children.map((c) => (
-          <View key={c.id} style={[s.row, { paddingVertical: 10, paddingHorizontal: 16 }]}>
-            <Gremlin color={kidColor(c)} size={44} />
-            <View style={s.grow}>
-              <Text style={s.strong}>{c.display_name}</Text>
-              <Text style={s.cap}>{tablets.some((t) => t.child_ids.includes(c.id)) ? 'Sur la tablette' : 'Pas encore sur une tablette'}</Text>
+          <View key={c.id} style={{ paddingVertical: 10, paddingHorizontal: 16, gap: 10 }}>
+            <View style={s.row}>
+              <KidPic kid={c} size={44} />
+              <View style={s.grow}>
+                <Text style={s.strong}>{c.display_name}</Text>
+                <Text style={s.cap}>{tablets.some((t) => t.child_ids.includes(c.id)) ? 'Sur la tablette' : 'Pas encore sur une tablette'}</Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Avatar de ${c.display_name}`}
+                onPress={() => onAvatar({ kind: 'child', id: c.id, name: c.display_name, spec: c.avatar_spec })}
+                style={{ height: 36, paddingHorizontal: 14, borderRadius: 999, backgroundColor: C.primarySoft, justifyContent: 'center' }}
+              >
+                <Text style={{ fontFamily: F.b700, fontSize: 14, color: C.primaryDeep }}>Avatar</Text>
+              </Pressable>
+            </View>
+            <View style={[s.row, { gap: 10 }]}>
+              <View style={s.grow}>
+                <Text style={[s.cap, { color: C.ink }]}>Caméra pour créer son avatar</Text>
+                <Text style={s.cap}>La tablette regarde son visage pour proposer les couleurs. La photo n’est ni envoyée ni gardée.</Text>
+              </View>
+              <Switch
+                accessibilityLabel={`Autoriser la caméra pour l’avatar de ${c.display_name}`}
+                value={c.avatar_camera_allowed}
+                onValueChange={(on) => allowCamera(c.id, on)}
+                trackColor={{ true: C.primary, false: C.border }}
+                thumbColor="#fff"
+              />
             </View>
           </View>
         ))}

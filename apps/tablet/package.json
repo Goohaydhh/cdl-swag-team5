@@ -17,6 +17,8 @@
     "@capacitor/core": "^8.5.2",
     "@fontsource/fredoka": "^5.3.0",
     "@fontsource/nunito": "^5.3.0",
+    "@mediapipe/tasks-vision": "^1.1.0",
+    "@swag/avatar": "workspace:*",
     "@swag/client": "workspace:*",
     "@swag/design-tokens": "workspace:*",
     "@swag/protocol": "workspace:*",

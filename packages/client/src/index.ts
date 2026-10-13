@@ -1,6 +1,7 @@
 import type {
   ApprovePairingInput,
   Availability,
+  AvatarSpec,
   ChatMessageInput,
   ChildStatus,
   CreateChildInput,
@@ -143,6 +144,7 @@ export function createSwagClient(options: ClientOptions) {
     revokeDevice: (id: string) => request<void>('DELETE', `/devices/${id}`),
     setAvailability: (status: Availability, eta_minutes?: number) =>
       request<{ status: Availability }>('PUT', '/me/availability', { body: { status, eta_minutes } }),
+    setMyAvatar: (avatar: AvatarSpec | null) => request<{ avatar_spec: AvatarSpec | null }>('PUT', '/me/avatar', { body: { avatar } }),
     setPushToken: (push_token: string | null) => request<void>('PUT', '/devices/me/push-token', { body: { push_token } }),
 
     // ------------------------------------------------------------ pairing (parent generates the code)
@@ -166,6 +168,9 @@ export function createSwagClient(options: ClientOptions) {
     deviceToken: (device_id: string, credential: string) =>
       request<DeviceTokenResult>('POST', '/device/token', { body: { device_id, credential }, auth: false }),
     deviceProfiles: () => get<DeviceProfilesDto>('/device/profiles'),
+    /** Parents (any child of the family) and tablets (their own children). */
+    setChildAvatar: (childId: string, avatar: AvatarSpec | null) =>
+      request<ChildDto>('PUT', `/children/${childId}/avatar`, { body: { avatar } }),
     setStatus: (childId: string, body: { client_event_id: string; status: ChildStatus; occurred_at: string; note?: string }) =>
       post<{ event_id: string; duplicate: boolean }>(`/children/${childId}/status`, body),
 

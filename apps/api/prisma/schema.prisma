@@ -101,6 +101,7 @@ model User {
   passwordHash String   @map("password_hash") // Argon2id
   displayName  String   @map("display_name")
   avatarKey    String?  @map("avatar_key")
+  avatarSpec   Json?    @map("avatar_spec") // custom avatar choices (@swag/protocol AvatarSpec), never a photo
   isOwner      Boolean  @default(false) @map("is_owner")
   adminPinHash String?  @map("admin_pin_hash") // unlocks parent mode on the tablet
   consentAt    DateTime @map("consent_at") @db.Timestamptz // GDPR Art. 8 parental consent
@@ -118,14 +119,16 @@ model User {
 }
 
 model ChildProfile {
-  id          String   @id @db.Uuid
-  familyId    String   @map("family_id") @db.Uuid
-  displayName String   @map("display_name") @db.VarChar(30)
-  avatarKey   String   @map("avatar_key")
-  color       String
-  pinHash     String?  @map("pin_hash") // optional picture PIN
-  sortOrder   Int      @default(0) @map("sort_order")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id                  String   @id @db.Uuid
+  familyId            String   @map("family_id") @db.Uuid
+  displayName         String   @map("display_name") @db.VarChar(30)
+  avatarKey           String   @map("avatar_key")
+  avatarSpec          Json?    @map("avatar_spec") // custom avatar choices (@swag/protocol AvatarSpec), never a photo
+  avatarCameraAllowed Boolean  @default(false) @map("avatar_camera_allowed") // parent lets the child use the camera in the avatar maker
+  color               String
+  pinHash             String?  @map("pin_hash") // optional picture PIN
+  sortOrder           Int      @default(0) @map("sort_order")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   family        Family               @relation(fields: [familyId], references: [id], onDelete: Cascade)
   devices       DeviceChildProfile[]

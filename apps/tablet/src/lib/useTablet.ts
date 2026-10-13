@@ -4,6 +4,7 @@ import {
   type ChildStatus,
   type ClientToServerEvents,
   type Message,
+  type AvatarSpec,
   type RingerMode,
   RT_NAMESPACE,
   type ServerToClientEvents,
@@ -16,7 +17,14 @@ import { api, DeviceRevokedError, getAccessToken } from './session';
 import { load, save } from './storage';
 
 export type Kid = DeviceProfilesDto['children'][number];
-export type Parent = { id: string; display_name: string; availability: Availability; eta_minutes: number | null; ringer: RingerMode };
+export type Parent = {
+  id: string;
+  display_name: string;
+  avatar_spec: AvatarSpec | null;
+  availability: Availability;
+  eta_minutes: number | null;
+  ringer: RingerMode;
+};
 export interface StatusInfo { status: ChildStatus; occurred_at: string }
 /** A message on screen: confirmed by the server, or still in the outbox. */
 export type ChatItem = Message & { pending?: boolean };
@@ -208,6 +216,12 @@ export function useTablet(onRevoked: () => void) {
     chatOpen.current = open;
   }, []);
 
+  /** "Créer mon avatar": saves a child's avatar (null = back to the Gremlin). Needs to be online. */
+  const saveAvatar = useCallback(async (childId: string, avatar: AvatarSpec | null) => {
+    const child = await api.setChildAvatar(childId, avatar);
+    setKids((ks) => ks.map((k) => (k.id === childId ? { ...k, avatar_spec: child.avatar_spec } : k)));
+  }, []);
+
   const typingParent = typing ? parents.find((p) => p.id === typing) ?? null : null;
 
   return {
@@ -227,6 +241,7 @@ export function useTablet(onRevoked: () => void) {
     sendMessage,
     markRead,
     setChatOpen,
+    saveAvatar,
   };
 }
 

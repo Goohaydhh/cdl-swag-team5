@@ -131,6 +131,8 @@ export const UpdateChildInput = z
     /** null removes the PIN. */
     pin: childPin.nullable(),
     sort_order: z.int().min(0).max(100),
+    /** Lets this child use the tablet camera in "Créer mon avatar" (off by default). */
+    avatar_camera_allowed: z.boolean(),
   })
   .partial();
 export type UpdateChildInput = z.infer<typeof UpdateChildInput>;

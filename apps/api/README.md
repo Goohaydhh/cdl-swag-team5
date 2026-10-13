@@ -33,7 +33,8 @@ Errors always look like `{ "error": { "code": "VALIDATION", "message": "…" } }
 | Pairing | `GET /pairing/sessions/:id?wait=25` | public | Tablet long-poll, header `X-Pairing-Secret`; credential returned once |
 | Invites | `POST /family/invites`, `POST /family/invites/accept` | parent, public | Second parent joins with the code (24 h) |
 | Family | `GET`, `PATCH /family` | parent | Name, retention days |
-| Children | `GET`, `POST /children`, `PATCH`, `DELETE /children/:id` | parent | Optional 4-digit `pin` |
+| Children | `GET`, `POST /children`, `PATCH`, `DELETE /children/:id` | parent | Optional 4-digit `pin`; `avatar_camera_allowed` lets the child use the tablet camera in the avatar maker |
+| Avatars | `PUT /me/avatar`, `PUT /children/:id/avatar` | parent (me, any child), device (its own children) | Body `{ avatar: AvatarSpec \| null }`: a list of choices from closed lists (`@swag/protocol`), never a photo |
 | Devices | `GET /devices`, `PATCH`, `DELETE /devices/:id` | parent | Assign children to a tablet; revoke = instant cut-off |
 | Tablet | `POST /device/token` | public | `{ device_id, credential }` → access token + **rotated** credential |
 | Tablet | `GET /device/profiles` | device | Children on this tablet + parents |

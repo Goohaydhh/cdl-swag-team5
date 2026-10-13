@@ -7,8 +7,9 @@ import { clockTime } from '../lib/format';
 import { useMediaUrl } from '../lib/media';
 import { api } from '../lib/session';
 import type { ChatItem, Family } from '../lib/useFamily';
-import { Gremlin, Icon, kidColor, Sticker } from '../ui/art';
-import { Button, GremlinStack, TopBar } from '../ui/kit';
+import { Gremlin, Icon, Sticker } from '../ui/art';
+import { KidStack } from '../ui/AvatarPic';
+import { Button, TopBar } from '../ui/kit';
 import { C, F, s, shadowCard } from '../ui/theme';
 
 type Panel = null | 'stickers' | 'gif';
@@ -134,7 +135,7 @@ function MessageRow({ m, f, onOpen }: { m: ChatItem; f: Family; onOpen: (m: Chat
     <View style={{ alignItems: mine ? 'flex-end' : 'flex-start' }}>
       {!mine && who ? <Text style={[s.cap, { marginLeft: kids.length ? 40 : 0, marginBottom: 2 }]}>{who}</Text> : null}
       <View style={[s.row, { gap: 8, alignItems: 'flex-end' }]}>
-        {kids.length > 0 && <GremlinStack colors={kids.slice(0, 3).map(kidColor)} size={kids.length > 1 ? 26 : 32} />}
+        {kids.length > 0 && <KidStack kids={kids.slice(0, 3)} size={kids.length > 1 ? 26 : 32} />}
         <Content m={m} mine={mine} onOpen={onOpen} />
       </View>
       {m.failed && <Text style={[s.cap, { color: C.danger }]}>Pas envoyé. Vérifie ta connexion.</Text>}

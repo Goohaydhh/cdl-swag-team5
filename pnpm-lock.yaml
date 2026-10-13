@@ -311,6 +311,9 @@ importers:
       '@expo/metro-runtime':
         specifier: ~57.0.16
         version: 57.0.16(@expo/log-box@57.0.4)(expo@57.0.27)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.2.18)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
+      '@swag/avatar':
+        specifier: workspace:*
+        version: link:../../packages/avatar
       '@swag/client':
         specifier: workspace:*
         version: link:../../packages/client
@@ -387,6 +390,12 @@ importers:
       '@fontsource/nunito':
         specifier: ^5.3.0
         version: 5.3.0
+      '@mediapipe/tasks-vision':
+        specifier: ^1.1.0
+        version: 1.1.0
+      '@swag/avatar':
+        specifier: workspace:*
+        version: link:../../packages/avatar
       '@swag/client':
         specifier: workspace:*
         version: link:../../packages/client
@@ -433,6 +442,12 @@ importers:
       vite:
         specifier: ^8.3.0
         version: 8.3.2(@types/node@24.19.1)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.1)
+
+  packages/avatar:
+    dependencies:
+      '@swag/protocol':
+        specifier: workspace:*
+        version: link:../protocol
 
   packages/client:
     dependencies:
@@ -1712,6 +1727,9 @@ packages:
   '@lukeed/csprng@1.1.0':
     resolution: {integrity: sha512-Z7C/xXCiGWsg0KuKsHTKJxbWhpI3Vs5GwLfOean7MGyVFGqdRgBbAjOCh6u4bbjPc/8MJ2pZmK/0DLdCbivLDA==}
     engines: {node: '>=8'}
+
+  '@mediapipe/tasks-vision@1.1.0':
+    resolution: {integrity: sha512-ZJqh0wMKOINorfSffvDAxzyO1//c+FiG3IkzOdNDnLqvBB3DbMfj0bB/tys2SNf9S914sgoIbIpF4HTOi336cg==}
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     resolution: {integrity: sha512-oTXEIha4SsuXdTA4Iyskj0kpdx2yVXdhd75c2v3xGrHFfVMsbhTPZU/nMPL4sWKo4pBHm3aucLaqGlF696dTyQ==}
@@ -7664,6 +7682,8 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.6.0
 
   '@lukeed/csprng@1.1.0': {}
+
+  '@mediapipe/tasks-vision@1.1.0': {}
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true

@@ -1,4 +1,4 @@
-import type { Availability, ChildStatus, Message, PairingState, RingerMode } from '@swag/protocol';
+import type { Availability, AvatarSpec, ChildStatus, Message, PairingState, RingerMode } from '@swag/protocol';
 
 // Response shapes of the SWAG API (apps/api). Request bodies come from @swag/protocol.
 
@@ -25,6 +25,10 @@ export interface ChildDto {
   id: string;
   display_name: string;
   avatar_key: string;
+  /** Custom avatar ("Créer mon avatar"), or null for the default Gremlin. */
+  avatar_spec: AvatarSpec | null;
+  /** A parent allowed this child to use the tablet camera in the avatar maker. */
+  avatar_camera_allowed: boolean;
   color: string;
   has_pin: boolean;
   sort_order: number;
@@ -34,6 +38,7 @@ export interface ParentDto {
   id: string;
   display_name: string;
   avatar_key: string | null;
+  avatar_spec: AvatarSpec | null;
   is_owner?: boolean;
 }
 
@@ -55,11 +60,19 @@ export interface CurrentStatus {
 
 export interface OverviewDto {
   generated_at: string;
-  children: { id: string; display_name: string; avatar_key: string; color: string; status: CurrentStatus | null }[];
+  children: {
+    id: string;
+    display_name: string;
+    avatar_key: string;
+    avatar_spec: AvatarSpec | null;
+    color: string;
+    status: CurrentStatus | null;
+  }[];
   parents: {
     id: string;
     display_name: string;
     avatar_key: string | null;
+    avatar_spec: AvatarSpec | null;
     availability: Availability;
     eta_minutes: number | null;
     availability_at: string | null;

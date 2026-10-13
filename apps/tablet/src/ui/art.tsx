@@ -26,6 +26,7 @@ const ICONS = {
   phone: '<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/>',
   camera:
     '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
+  smile: '<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/>',
   battery: '<rect x="2" y="7" width="16" height="10" rx="2"/><path d="M22 11v2"/>',
   volume:
     '<path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/>',
@@ -63,27 +64,6 @@ export function Gremlin({ color, size }: { color: string; size: number }) {
 
 export function Sticker({ code, size }: { code: string; size: number }) {
   return <img src={svgDataUri(stickerSvg(code))} width={size} height={size} alt="" draggable={false} style={{ flex: 'none' }} />;
-}
-
-/** Overlapping Gremlins for a shared message. */
-export function GremlinStack({ colors, size }: { colors: string[]; size: number }) {
-  return (
-    <span style={{ display: 'inline-flex', flex: 'none' }}>
-      {colors.map((c, i) => (
-        <span
-          key={i}
-          style={{
-            marginLeft: i ? -Math.round(size * 0.35) : 0,
-            display: 'inline-flex',
-            borderRadius: '50%',
-            boxShadow: '0 0 0 2px var(--a-bg)',
-          }}
-        >
-          <Gremlin color={c} size={size} />
-        </span>
-      ))}
-    </span>
-  );
 }
 
 /** Round initial for a parent (no photos for parents in the designs). */

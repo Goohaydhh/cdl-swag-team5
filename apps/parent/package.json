@@ -6,6 +6,7 @@
     "@expo-google-fonts/fredoka": "^0.4.1",
     "@expo-google-fonts/nunito": "^0.4.2",
     "@expo/metro-runtime": "~57.0.16",
+    "@swag/avatar": "workspace:*",
     "@swag/client": "workspace:*",
     "@swag/design-tokens": "workspace:*",
     "@swag/protocol": "workspace:*",

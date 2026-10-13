@@ -1,7 +1,7 @@
 import { radius } from '@swag/design-tokens';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, type StyleProp, Text, View, type ViewStyle } from 'react-native';
-import { Gremlin, Icon, type IconName } from './art';
+import { Icon, type IconName } from './art';
 import { C, F, s } from './theme';
 
 type Variant = 'primary' | 'soft' | 'white' | 'line';
@@ -71,19 +71,6 @@ export function Initial({ name, color, size = 44 }: { name: string; color: strin
   );
 }
 export const PARENT_COLORS = ['#6B4EFF', '#3DBE7A', '#FF8A3D', '#3B9BF0'];
-
-/** Overlapping Gremlins for a shared message. */
-export function GremlinStack({ colors, size }: { colors: string[]; size: number }) {
-  return (
-    <View style={{ flexDirection: 'row' }}>
-      {colors.map((c, i) => (
-        <View key={i} style={{ marginLeft: i ? -Math.round(size * 0.35) : 0 }}>
-          <Gremlin color={c} size={size} />
-        </View>
-      ))}
-    </View>
-  );
-}
 
 export function Checkbox({ on }: { on: boolean }) {
   return (

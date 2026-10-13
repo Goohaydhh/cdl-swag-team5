@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { StatusUpdateInput } from '@swag/protocol';
+import type { AvatarSpec, StatusUpdateInput } from '@swag/protocol';
 import type { Principal } from '../auth/principal';
 import { ApiError } from '../common/api-error';
 import { newId } from '../common/crypto';
@@ -128,6 +128,7 @@ export class StatusService {
         id: c.id,
         display_name: c.displayName,
         avatar_key: c.avatarKey,
+        avatar_spec: c.avatarSpec as AvatarSpec | null,
         color: c.color,
         status: c.currentStatus
           ? {
@@ -141,6 +142,7 @@ export class StatusService {
         id: u.id,
         display_name: u.displayName,
         avatar_key: u.avatarKey,
+        avatar_spec: u.avatarSpec as AvatarSpec | null,
         availability: u.presence?.availability ?? 'available',
         eta_minutes: u.presence?.etaMinutes ?? null,
         availability_at: u.presence?.availabilityAt.toISOString() ?? null,

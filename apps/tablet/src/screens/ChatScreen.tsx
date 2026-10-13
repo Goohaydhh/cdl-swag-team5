@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useMediaUrl } from '../lib/media';
 import { api } from '../lib/session';
 import type { ChatItem, Kid, Tablet } from '../lib/useTablet';
-import { Gremlin, GremlinStack, Icon, Initial, Sticker } from '../ui/art';
-import { kidColor, PARENT_COLORS } from '../ui/colors';
+import { Gremlin, Icon, Sticker } from '../ui/art';
+import { KidStack, ParentPic } from '../ui/AvatarPic';
+import { PARENT_COLORS } from '../ui/colors';
 import { WhoChips } from '../ui/WhoChips';
 
 type Panel = null | 'gif' | 'kb';
@@ -57,7 +58,7 @@ export function ChatScreen({ t, onBack, onDraw }: { t: Tablet; onBack: () => voi
           ))}
           {t.typingParent && (
             <div className="row" style={{ gap: 12 }}>
-              <Initial name={t.typingParent.display_name} color={parentColor(t, t.typingParent.id)} />
+              <ParentPic parent={t.typingParent} color={parentColor(t, t.typingParent.id)} />
               <span className="card row dots" style={{ padding: '16px 22px', gap: 8, borderRadius: 32 }}>
                 <i style={{ width: 14, height: 14 }} />
                 <i style={{ width: 14, height: 14 }} />
@@ -116,7 +117,7 @@ function MessageRow({ m, t }: { m: ChatItem; t: Tablet }) {
     return (
       <div className="col" style={{ gap: 6, alignItems: 'flex-start' }}>
         <div className="row" style={{ gap: 12, alignItems: 'flex-end' }}>
-          <Initial name={name} color={parentColor(t, m.sender.id)} />
+          <ParentPic parent={parent ?? { display_name: name }} color={parentColor(t, m.sender.id)} />
           <Content m={m} mine={false} />
         </div>
       </div>
@@ -130,7 +131,7 @@ function MessageRow({ m, t }: { m: ChatItem; t: Tablet }) {
   return (
     <div className="col" style={{ gap: 6, alignItems: 'flex-end' }}>
       <div className="row" style={{ gap: 8, justifyContent: 'flex-end', font: '700 16px var(--font-b)', color: 'var(--a-soft)' }}>
-        <GremlinStack colors={speakers.map(kidColor)} size={speakers.length > 1 ? 28 : 32} />
+        <KidStack kids={speakers} size={speakers.length > 1 ? 28 : 32} />
         {label}
         {speakers.length > 1 ? ' · message commun' : ''}
       </div>

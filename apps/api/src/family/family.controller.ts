@@ -1,8 +1,9 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put } from '@nestjs/common';
 import {
   ChildSessionInput,
   CreateChildInput,
   DeviceTokenInput,
+  SetAvatarInput,
   UpdateChildInput,
   UpdateDeviceInput,
   UpdateFamilyInput,
@@ -43,6 +44,21 @@ export class FamilyController {
     @Body(new ZodPipe(UpdateChildInput)) body: UpdateChildInput,
   ) {
     return this.family.updateChild(p, id, body);
+  }
+
+  @Scopes('parent', 'device')
+  @Put('children/:id/avatar')
+  setChildAvatar(
+    @CurrentPrincipal() p: Principal,
+    @Param('id', UuidParam) id: string,
+    @Body(new ZodPipe(SetAvatarInput)) body: SetAvatarInput,
+  ) {
+    return this.family.setChildAvatar(p, id, body);
+  }
+
+  @Put('me/avatar')
+  setMyAvatar(@CurrentPrincipal() p: Principal, @Body(new ZodPipe(SetAvatarInput)) body: SetAvatarInput) {
+    return this.family.setMyAvatar(p, body);
   }
 
   @Delete('children/:id')

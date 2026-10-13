@@ -2,8 +2,9 @@ import { availabilityColor, availabilityLabel, statusChildLabel, statusColor } f
 import { speakerLabel } from '@swag/client';
 import type { ChildStatus, RingerMode } from '@swag/protocol';
 import type { Tablet } from '../lib/useTablet';
-import { GremlinStack, Icon, type IconName, Initial } from '../ui/art';
-import { kidColor, PARENT_COLORS } from '../ui/colors';
+import { Icon, type IconName } from '../ui/art';
+import { KidStack, ParentPic } from '../ui/AvatarPic';
+import { PARENT_COLORS } from '../ui/colors';
 import { WhoChips } from '../ui/WhoChips';
 
 const TILES: { status: ChildStatus; icon: IconName }[] = [
@@ -28,7 +29,7 @@ export function StatusScreen({ t }: { t: Tablet }) {
       )}
       <div className="row" style={{ justifyContent: 'space-between', padding: '14px 48px 8px', flex: 'none' }}>
         <div className="row" style={{ gap: 16 }}>
-          <GremlinStack colors={speaking.map(kidColor)} size={speaking.length > 1 ? 56 : 72} />
+          <KidStack kids={speaking} size={speaking.length > 1 ? 56 : 72} />
           <h1 className="big">Salut {names} !</h1>
         </div>
         {t.parents.length > 0 && (
@@ -36,7 +37,7 @@ export function StatusScreen({ t }: { t: Tablet }) {
             {t.parents.map((p, i) => (
               <div className="row" key={p.id}>
                 <span style={{ position: 'relative', display: 'inline-flex' }}>
-                  <Initial name={p.display_name} color={PARENT_COLORS[i % PARENT_COLORS.length]!} />
+                  <ParentPic parent={p} color={PARENT_COLORS[i % PARENT_COLORS.length]!} />
                   <RingerBadge mode={p.ringer} />
                 </span>
                 <div>

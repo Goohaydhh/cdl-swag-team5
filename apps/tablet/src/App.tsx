@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { forgetDevice, loadSession, saveSession, type DeviceSession } from './lib/session';
 import { useTablet } from './lib/useTablet';
+import { AvatarScreen } from './screens/AvatarScreen';
 import { ChatScreen } from './screens/ChatScreen';
 import { DrawScreen } from './screens/DrawScreen';
 import { Pairing } from './screens/Pairing';
@@ -24,7 +25,7 @@ export default function App() {
   return <Paired key={session.deviceId} onRevoked={revoked} />;
 }
 
-type Screen = 'status' | 'chat' | 'draw';
+type Screen = 'status' | 'chat' | 'draw' | 'avatar';
 
 function Paired({ onRevoked }: { onRevoked: () => void }) {
   const t = useTablet(onRevoked);
@@ -53,6 +54,9 @@ function Paired({ onRevoked }: { onRevoked: () => void }) {
 
       {screen === 'status' && <StatusScreen t={t} />}
       {screen === 'chat' && <ChatScreen t={t} onBack={() => setScreen('status')} onDraw={() => setScreen('draw')} />}
+      {screen === 'avatar' && (
+        <AvatarScreen t={t} onBack={() => setScreen('status')} onSaved={() => (setScreen('status'), showToast('Ton avatar est prêt !'))} />
+      )}
       {screen === 'draw' && (
         <DrawScreen
           t={t}
@@ -71,6 +75,10 @@ function Paired({ onRevoked }: { onRevoked: () => void }) {
             <Icon name="chat" size={32} stroke={2.4} />
             Discuter
             {t.unread > 0 && <span className="badge">{t.unread}</span>}
+          </button>
+          <button onClick={() => setScreen('avatar')}>
+            <Icon name="smile" size={32} stroke={2.4} />
+            Créer mon avatar
           </button>
         </div>
       )}

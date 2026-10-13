@@ -5,15 +5,17 @@ import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native'
 import { relativeTime, todayLabel } from '../lib/format';
 import { api } from '../lib/session';
 import type { Family } from '../lib/useFamily';
-import { Gremlin, Icon, type IconName, kidColor } from '../ui/art';
-import { Card, Initial, PARENT_COLORS } from '../ui/kit';
+import type { AvatarTarget } from './AvatarEditor';
+import { Icon, type IconName } from '../ui/art';
+import { KidPic, ParentPic } from '../ui/AvatarPic';
+import { Card, PARENT_COLORS } from '../ui/kit';
 import { C, F, s } from '../ui/theme';
 
 const STATUS_ICON: Record<string, IconName> = { at_home: 'house', left_home: 'door', at_friend: 'users' };
 const ETAS = [10, 20, 30];
 
 /** P1 "Accueil": the children's statuses, the parents, and my availability. */
-export function HomeScreen({ f }: { f: Family }) {
+export function HomeScreen({ f, onAvatar }: { f: Family; onAvatar: (t: AvatarTarget) => void }) {
   const [refreshing, setRefreshing] = useState(false);
   const [etaOpen, setEtaOpen] = useState(false);
   const o = f.overview;
@@ -43,6 +45,21 @@ export function HomeScreen({ f }: { f: Family }) {
         )}
       </View>
 
+      {mine && (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => onAvatar({ kind: 'me', name: myName, spec: mine.avatar_spec })}
+          style={[s.card, s.row, { paddingVertical: 10, paddingHorizontal: 14, gap: 12 }]}
+        >
+          <ParentPic parent={mine} color={PARENT_COLORS[o!.parents.indexOf(mine) % PARENT_COLORS.length]!} size={48} />
+          <View style={s.grow}>
+            <Text style={s.strong}>{mine.avatar_spec ? 'Modifier mon avatar' : 'Créer mon avatar'}</Text>
+            <Text style={s.cap}>Il apparaît partout à la place de ton initiale.</Text>
+          </View>
+          <Icon name="smile" size={24} color={C.primary} />
+        </Pressable>
+      )}
+
       {o?.children.length === 0 && (
         <Card style={{ padding: 16, gap: 6 }}>
           <Text style={s.h3}>Ajoute tes enfants</Text>
@@ -53,7 +70,7 @@ export function HomeScreen({ f }: { f: Family }) {
         const st = c.status?.status;
         return (
           <Card key={c.id} style={[s.row, { paddingVertical: 12, paddingHorizontal: 14, gap: 14 }]}>
-            <Gremlin color={kidColor(c)} size={52} />
+            <KidPic kid={c} size={52} />
             <View style={[s.grow, { gap: 6 }]}>
               <View style={[s.row, { justifyContent: 'space-between' }]}>
                 <Text style={s.h3}>{c.display_name}</Text>
@@ -77,7 +94,7 @@ export function HomeScreen({ f }: { f: Family }) {
           {o.parents.map((p, i) => (
             <View key={p.id} style={s.row}>
               <View>
-                <Initial name={p.display_name} color={PARENT_COLORS[i % PARENT_COLORS.length]!} />
+                <ParentPic parent={p} color={PARENT_COLORS[i % PARENT_COLORS.length]!} />
                 <RingerBadge mode={p.ringer} />
               </View>
               <View style={s.grow}>

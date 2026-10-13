@@ -1,7 +1,7 @@
 import { speakerLabel } from '@swag/client';
 import type { Kid } from '../lib/useTablet';
-import { Gremlin, Icon } from './art';
-import { kidColor } from './colors';
+import { Icon } from './art';
+import { KidPic } from './AvatarPic';
 
 /**
  * "Qui parle ?": horizontal checkable chips. Several checked = a shared message (message
@@ -21,7 +21,7 @@ export function WhoChips({ kids, who, onChange }: { kids: Kid[]; who: string[]; 
         const on = who.includes(k.id);
         return (
           <button key={k.id} className="whochip" aria-pressed={on} onClick={() => toggle(k.id)}>
-            <Gremlin color={kidColor(k)} size={44} />
+            <KidPic kid={k} size={44} />
             <span>{k.display_name}</span>
             <span className="wbox">{on && <Icon name="check" size={20} color="#fff" stroke={3.4} />}</span>
           </button>

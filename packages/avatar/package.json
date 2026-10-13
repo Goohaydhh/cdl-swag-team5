@@ -1,0 +1,27 @@
+{
+  "name": "@swag/avatar",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Draws SWAG custom avatars (2D, layered SVG shapes) for the parent and tablet apps",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@swag/protocol": "workspace:*"
+  }
+}

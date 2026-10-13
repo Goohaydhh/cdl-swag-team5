@@ -2,8 +2,10 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import {
   type ChildSessionInput,
   type CreateChildInput,
+  type AvatarSpec,
   type DeviceTokenInput,
   ErrorCode,
+  type SetAvatarInput,
   type UpdateChildInput,
   type UpdateDeviceInput,
   type UpdateFamilyInput,
@@ -15,7 +17,7 @@ import { ApiError } from '../common/api-error';
 import { AuditService } from '../common/audit.service';
 import { hashPin, newId, randomToken, safeEqualHex, sha256, verifySecret } from '../common/crypto';
 import { RateLimitService } from '../common/rate-limit.service';
-import type { ChildProfile, Device } from '../generated/prisma/client';
+import { Prisma, type ChildProfile, type Device } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 
@@ -23,10 +25,15 @@ export const toChildDto = (c: ChildProfile) => ({
   id: c.id,
   display_name: c.displayName,
   avatar_key: c.avatarKey,
+  avatar_spec: c.avatarSpec as AvatarSpec | null,
+  avatar_camera_allowed: c.avatarCameraAllowed,
   color: c.color,
   has_pin: c.pinHash !== null,
   sort_order: c.sortOrder,
 });
+
+/** Prisma needs DbNull (not JS null) to clear a JSON column. */
+const avatarData = (avatar: AvatarSpec | null) => avatar ?? Prisma.DbNull;
 
 const toDeviceDto = (d: Device & { children?: { childProfileId: string }[] }) => ({
   id: d.id,
@@ -69,6 +76,7 @@ export class FamilyService {
         id: u.id,
         display_name: u.displayName,
         avatar_key: u.avatarKey,
+        avatar_spec: u.avatarSpec as AvatarSpec | null,
         is_owner: u.isOwner,
       })),
       children: family.children.map(toChildDto),
@@ -114,6 +122,7 @@ export class FamilyService {
         avatarKey: input.avatar_key,
         color: input.color,
         sortOrder: input.sort_order,
+        avatarCameraAllowed: input.avatar_camera_allowed,
         ...(input.pin !== undefined ? { pinHash: input.pin ? await hashPin(input.pin) : null } : {}),
       },
     });
@@ -132,6 +141,32 @@ export class FamilyService {
       meta: { child_id: childId },
     });
     await this.profilesChanged(principal.fam);
+  }
+
+  // ---------------------------------------------------------------- custom avatars
+
+  /** A parent sets (or clears) their own avatar. */
+  async setMyAvatar(principal: Principal, input: SetAvatarInput) {
+    await this.prisma.user.update({ where: { id: principal.sub }, data: { avatarSpec: avatarData(input.avatar) } });
+    await this.profilesChanged(principal.fam);
+    return { avatar_spec: input.avatar };
+  }
+
+  /** A parent (any child of the family) or a tablet (only the children it shows) sets a child's avatar. */
+  async setChildAvatar(principal: Principal, childId: string, input: SetAvatarInput) {
+    await this.findChild(principal.fam, childId);
+    if (principal.scope === 'device') {
+      const link = await this.prisma.deviceChildProfile.findUnique({
+        where: { deviceId_childProfileId: { deviceId: principal.dev!, childProfileId: childId } },
+      });
+      if (!link) throw ApiError.notFound('Child');
+    }
+    const child = await this.prisma.childProfile.update({
+      where: { id: childId },
+      data: { avatarSpec: avatarData(input.avatar) },
+    });
+    await this.profilesChanged(principal.fam);
+    return toChildDto(child);
   }
 
   private async findChild(familyId: string, childId: string) {
@@ -274,6 +309,7 @@ export class FamilyService {
         id: u.id,
         display_name: u.displayName,
         avatar_key: u.avatarKey,
+        avatar_spec: u.avatarSpec as AvatarSpec | null,
         availability: u.presence?.availability ?? 'available',
         eta_minutes: u.presence?.etaMinutes ?? null,
         ringer: u.presence?.ringer ?? 'unknown',

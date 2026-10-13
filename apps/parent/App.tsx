@@ -12,6 +12,7 @@ import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { onSessionChange, type ParentSession, restoreSession } from './src/lib/session';
 import { useFamily } from './src/lib/useFamily';
+import { AvatarEditor, type AvatarTarget } from './src/screens/AvatarEditor';
 import { ChatScreen } from './src/screens/ChatScreen';
 import { FamilyScreen } from './src/screens/FamilyScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -56,6 +57,7 @@ function Main() {
   const [pairing, setPairingView] = useState(false);
   const [validate, setValidate] = useState<{ id: string; model: string } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [avatarFor, setAvatarFor] = useState<AvatarTarget | null>(null);
 
   const show = (m: string) => {
     setToast(m);
@@ -86,12 +88,13 @@ function Main() {
       ) : (
         <>
           <View style={{ flex: 1 }}>
-            {tab === 'home' && <HomeScreen f={f} />}
+            {tab === 'home' && <HomeScreen f={f} onAvatar={setAvatarFor} />}
             {tab === 'chat' && <ChatScreen f={f} />}
             {tab === 'fam' && (
               <FamilyScreen
                 f={f}
                 onPair={() => setPairingView(true)}
+                onAvatar={setAvatarFor}
                 onValidate={() => pendingClaim && setValidate({ id: pendingClaim.pairing_id, model: String(pendingClaim.device_info.model ?? 'Tablette') })}
               />
             )}
@@ -115,6 +118,15 @@ function Main() {
           </View>
         </>
       )}
+      <AvatarEditor
+        target={avatarFor}
+        onClose={() => setAvatarFor(null)}
+        onSaved={(msg) => {
+          setAvatarFor(null);
+          void f.reload().catch(() => undefined);
+          show(msg);
+        }}
+      />
       <ValidateSheet
         f={f}
         pairingId={validate?.id ?? null}
