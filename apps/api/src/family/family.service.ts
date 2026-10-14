@@ -276,6 +276,7 @@ export class FamilyService {
         avatar_key: u.avatarKey,
         availability: u.presence?.availability ?? 'available',
         eta_minutes: u.presence?.etaMinutes ?? null,
+        availability_at: u.presence?.availabilityAt.toISOString() ?? null,
         ringer: u.presence?.ringer ?? 'unknown',
       })),
     };

@@ -1,6 +1,6 @@
-import { availabilityColor, availabilityLabel, statusColor, statusLabel, statusSoftColor } from '@swag/design-tokens';
-import type { Availability } from '@swag/protocol';
-import { useState } from 'react';
+import { availabilityColor, availabilityLabel, etaLabel, statusColor, statusLabel, statusSoftColor } from '@swag/design-tokens';
+import type { Availability, RingerMode } from '@swag/protocol';
+import { useEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { relativeTime, todayLabel } from '../lib/format';
 import { api } from '../lib/session';
@@ -19,9 +19,11 @@ export function HomeScreen({ f }: { f: Family }) {
   const o = f.overview;
   const mine = o?.parents.find((p) => p.id === f.me);
   const myName = mine?.display_name ?? '';
+  const now = useNow(o?.parents.some((p) => p.availability === 'on_my_way' && p.eta_minutes));
 
   const setAvail = async (status: Availability, eta?: number) => {
-    f.setOverview((ov) => ov && { ...ov, parents: ov.parents.map((p) => (p.id === f.me ? { ...p, availability: status, eta_minutes: eta ?? null } : p)) });
+    const at = new Date().toISOString();
+    f.setOverview((ov) => ov && { ...ov, parents: ov.parents.map((p) => (p.id === f.me ? { ...p, availability: status, eta_minutes: eta ?? null, availability_at: at } : p)) });
     setEtaOpen(false);
     await api.setAvailability(status, eta).catch(() => f.reload());
   };
@@ -76,23 +78,20 @@ export function HomeScreen({ f }: { f: Family }) {
         <Card style={{ padding: 14, gap: 12 }}>
           {o.parents.map((p, i) => (
             <View key={p.id} style={s.row}>
-              <Initial name={p.display_name} color={PARENT_COLORS[i % PARENT_COLORS.length]!} />
+              <View>
+                <Initial name={p.display_name} color={PARENT_COLORS[i % PARENT_COLORS.length]!} />
+                <RingerBadge mode={p.ringer} />
+              </View>
               <View style={s.grow}>
                 <Text style={s.strong}>{p.display_name}{p.id === f.me ? ' (moi)' : ''}</Text>
                 <View style={[s.row, { gap: 6 }]}>
                   <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: availabilityColor[p.availability] }} />
                   <Text style={s.cap}>
                     {availabilityLabel[p.availability]}
-                    {p.availability === 'on_my_way' && p.eta_minutes ? ` · ${p.eta_minutes} min` : ''}
+                    {p.availability === 'on_my_way' && p.eta_minutes ? ` · ${etaLabel(p.eta_minutes, p.availability_at, now)}` : ''}
                   </Text>
                 </View>
               </View>
-              {p.ringer === 'silent' && (
-                <View style={[s.row, { gap: 6, backgroundColor: C.background, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }]}>
-                  <Icon name="bellOff" size={16} color={C.inkSoft} />
-                  <Text style={s.cap}>Silencieux</Text>
-                </View>
-              )}
             </View>
           ))}
         </Card>
@@ -132,5 +131,37 @@ export function HomeScreen({ f }: { f: Family }) {
         </Card>
       )}
     </ScrollView>
+  );
+}
+
+/** The current time, refreshed every 30 s while an "En route" countdown is on screen. */
+function useNow(ticking: boolean | undefined) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (!ticking) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, [ticking]);
+  return now;
+}
+
+const RINGER_BADGE: Partial<Record<RingerMode, { icon: IconName; label: string }>> = {
+  silent: { icon: 'bellOff', label: 'Téléphone en silencieux' },
+  vibrate: { icon: 'vibrate', label: 'Téléphone en vibreur' },
+};
+
+/** FR-13: small badge on a parent's avatar when their phone won't ring. */
+function RingerBadge({ mode }: { mode: RingerMode }) {
+  const b = RINGER_BADGE[mode];
+  if (!b) return null;
+  return (
+    <View
+      accessible
+      accessibilityLabel={b.label}
+      style={{ position: 'absolute', right: -4, bottom: -4, width: 22, height: 22, borderRadius: 11, backgroundColor: C.surface, borderWidth: 2, borderColor: C.background, alignItems: 'center', justifyContent: 'center' }}
+    >
+      <Icon name={b.icon} size={13} color={C.inkSoft} stroke={2.4} />
+    </View>
   );
 }

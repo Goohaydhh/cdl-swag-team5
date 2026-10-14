@@ -1,5 +1,8 @@
 import { type AuthResult, createSwagClient, type ParentTokens, type UserDto } from '@swag/client';
+import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
+import { updateStatusWidget } from '../../modules/status-widget';
 import { API_URL } from './config';
 
 /** The parent's session, kept in the phone's secure storage (Keystore). */
@@ -34,6 +37,7 @@ export function onSessionChange(l: (s: ParentSession | null) => void) {
 
 async function setSession(next: ParentSession | null) {
   current = next;
+  if (!next) updateStatusWidget(null); // don't leave the children's statuses on the home screen
   try {
     if (next) await SecureStore.setItemAsync(KEY, JSON.stringify(next));
     else await SecureStore.deleteItemAsync(KEY);
@@ -48,6 +52,9 @@ export const signedIn = (r: AuthResult) =>
 
 export async function signOut() {
   const refresh = current?.tokens.refresh_token;
+  // Stop this phone getting the family's notifications, and clear the ones it shows.
+  if (current) await api.setPushToken(null).catch(() => undefined);
+  if (Platform.OS === 'android') await Notifications.dismissAllNotificationsAsync().catch(() => undefined);
   if (refresh) await api.logout(refresh).catch(() => undefined);
   await setSession(null);
 }

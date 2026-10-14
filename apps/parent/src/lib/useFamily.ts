@@ -3,6 +3,7 @@ import {
   type ClientToServerEvents,
   type Message,
   type PairingState,
+  type RingerMode,
   RT_NAMESPACE,
   type ServerToClientEvents,
 } from '@swag/protocol';
@@ -10,7 +11,10 @@ import { randomUUID } from 'expo-crypto';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { io, type Socket } from 'socket.io-client';
+import { addRingerListener, getRingerMode, ringerSupported } from '../../modules/ringer-mode';
+import { updateStatusWidget } from '../../modules/status-widget';
 import { API_URL } from './config';
+import { registerPush, toWidgetChildren } from './push';
 import { accessToken, api, getSession } from './session';
 
 export type ChatItem = Message & { pending?: boolean; failed?: boolean };
@@ -56,8 +60,21 @@ export function useFamily() {
       transports: ['websocket'],
     });
     socketRef.current = socket;
+
+    // FR-13: tell the family when my phone is on silent or vibrate. Android builds only.
+    let lastRinger: RingerMode | null = null;
+    const reportRinger = (force = false) => {
+      if (!ringerSupported || !socket?.connected) return;
+      const mode = getRingerMode();
+      if (!force && mode === lastRinger) return;
+      lastRinger = mode;
+      socket.emit('ringer_status', { mode, changed_at: new Date().toISOString() }, () => undefined);
+    };
+    const ringerSub = addRingerListener(() => reportRinger());
+
     socket.on('connect', () => {
       setOnline(true);
+      reportRinger(true);
       void reload().catch(() => undefined);
     });
     socket.on('disconnect', () => setOnline(false));
@@ -76,7 +93,9 @@ export function useFamily() {
         o && {
           ...o,
           parents: o.parents.map((p) =>
-            p.id === data.user_id ? { ...p, availability: data.status, eta_minutes: data.eta_minutes ?? null } : p,
+            p.id === data.user_id
+              ? { ...p, availability: data.status, eta_minutes: data.eta_minutes ?? null, availability_at: data.updated_at }
+              : p,
           ),
         },
       ),
@@ -110,14 +129,27 @@ export function useFamily() {
     });
 
     const sub = AppState.addEventListener('change', (st) => {
-      if (st === 'active') void reload().catch(() => undefined);
+      if (st !== 'active') return;
+      reportRinger();
+      void reload().catch(() => undefined);
     });
     return () => {
       sub.remove();
+      ringerSub?.remove();
       socket?.close();
       socketRef.current = null;
     };
   }, [me, reload]);
+
+  // Keep the Android home-screen widget in step with the live overview (pushes cover the app being closed).
+  useEffect(() => {
+    if (overview) updateStatusWidget(toWidgetChildren(overview));
+  }, [overview]);
+
+  useEffect(() => {
+    const sub = registerPush();
+    return () => void sub.then((s) => s?.remove());
+  }, []);
 
   const send = useCallback(
     async (content: { kind: 'text'; body: string } | { kind: 'sticker'; sticker_code: string } | { kind: 'gif'; gif_ref: string }) => {

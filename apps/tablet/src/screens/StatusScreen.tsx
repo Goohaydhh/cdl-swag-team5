@@ -1,6 +1,7 @@
-import { availabilityColor, availabilityLabel, statusChildLabel, statusColor } from '@swag/design-tokens';
+import { availabilityColor, availabilityLabel, etaLabel, statusChildLabel, statusColor } from '@swag/design-tokens';
 import { speakerLabel } from '@swag/client';
-import type { ChildStatus } from '@swag/protocol';
+import type { ChildStatus, RingerMode } from '@swag/protocol';
+import { useEffect, useState } from 'react';
 import type { Tablet } from '../lib/useTablet';
 import { GremlinStack, Icon, type IconName, Initial } from '../ui/art';
 import { kidColor, PARENT_COLORS } from '../ui/colors';
@@ -12,11 +13,24 @@ const TILES: { status: ChildStatus; icon: IconName }[] = [
   { status: 'at_friend', icon: 'users' },
 ];
 
+/** The current time, refreshed every 30 s while an "En route" countdown is on screen. */
+function useNow(ticking: boolean) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (!ticking) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, [ticking]);
+  return now;
+}
+
 /** K4/K5 "Mon statut": who is speaking, the parents' availability, three big status tiles. */
 export function StatusScreen({ t }: { t: Tablet }) {
   const speaking = t.kids.filter((k) => t.who.includes(k.id));
   const names = speaking.length >= 3 ? 'les enfants' : speakerLabel(speaking.map((k) => k.display_name));
   const parentNames = speakerLabel(t.parents.map((p) => p.display_name)) || 'tes parents';
+  const now = useNow(t.parents.some((p) => p.availability === 'on_my_way' && !!p.eta_minutes));
 
   return (
     <>
@@ -35,20 +49,18 @@ export function StatusScreen({ t }: { t: Tablet }) {
           <div className="pres">
             {t.parents.map((p, i) => (
               <div className="row" key={p.id}>
-                <Initial name={p.display_name} color={PARENT_COLORS[i % PARENT_COLORS.length]!} />
+                <span style={{ position: 'relative', display: 'inline-flex' }}>
+                  <Initial name={p.display_name} color={PARENT_COLORS[i % PARENT_COLORS.length]!} />
+                  <RingerBadge mode={p.ringer} />
+                </span>
                 <div>
                   <div className="h3">{p.display_name}</div>
                   <div className="cap row" style={{ gap: 6 }}>
                     <i style={{ width: 12, height: 12, borderRadius: '50%', background: availabilityColor[p.availability] }} />
                     {availabilityLabel[p.availability]}
-                    {p.availability === 'on_my_way' && p.eta_minutes ? ` · ${p.eta_minutes} min` : ''}
+                    {p.availability === 'on_my_way' && p.eta_minutes ? ` · ${etaLabel(p.eta_minutes, p.availability_at, now)}` : ''}
                   </div>
                 </div>
-                {p.ringer === 'silent' && (
-                  <span className="pill" style={{ width: 40, height: 40, background: 'var(--a-bg)', display: 'grid', placeItems: 'center' }} title="Téléphone en silencieux">
-                    <Icon name="bellOff" size={22} color="var(--a-soft)" />
-                  </span>
-                )}
               </div>
             ))}
           </div>
@@ -77,5 +89,26 @@ export function StatusScreen({ t }: { t: Tablet }) {
         })}
       </div>
     </>
+  );
+}
+
+const RINGER_BADGE: Partial<Record<RingerMode, { icon: IconName; label: string }>> = {
+  silent: { icon: 'bellOff', label: 'Téléphone en silencieux' },
+  vibrate: { icon: 'vibrate', label: 'Téléphone en vibreur' },
+};
+
+/** FR-13: small badge on a parent's avatar when their phone won't ring. */
+function RingerBadge({ mode }: { mode: RingerMode }) {
+  const b = RINGER_BADGE[mode];
+  if (!b) return null;
+  return (
+    <span
+      role="img"
+      aria-label={b.label}
+      title={b.label}
+      style={{ position: 'absolute', right: -4, bottom: -4, width: 28, height: 28, borderRadius: '50%', background: 'var(--a-card)', border: '2px solid var(--a-bg)', display: 'grid', placeItems: 'center' }}
+    >
+      <Icon name={b.icon} size={16} color="var(--a-soft)" />
+    </span>
   );
 }

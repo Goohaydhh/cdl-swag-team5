@@ -71,6 +71,17 @@ export const availabilityLabel = {
   on_my_way: 'En route',
 } as const;
 
+/**
+ * "En route" countdown from when the parent set it, in 5-minute steps so a child never sees
+ * it race: 25 min → 20 min → … → 5 min → Presque là. Null when no ETA was given.
+ */
+export function etaLabel(etaMinutes: number | null, setAt: string | null, now = Date.now()): string | null {
+  if (!etaMinutes) return null;
+  const elapsed = setAt ? Math.max(0, (now - Date.parse(setAt)) / 60_000) : 0;
+  const left = etaMinutes - elapsed;
+  return left <= 0 ? 'Presque là' : `${Math.ceil(left / 5) * 5} min`;
+}
+
 /** The 8 colours a parent can pick for a child profile (also the drawing palette). */
 export const childPalette = [
   '#E8484F',
