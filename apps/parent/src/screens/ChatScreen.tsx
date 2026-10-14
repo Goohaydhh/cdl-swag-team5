@@ -1,5 +1,6 @@
 import { type GifSearchResult, speakerLabel, SwagApiError } from '@swag/client';
 import { swagStickers } from '@swag/design-tokens';
+import * as Speech from 'expo-speech';
 import { useEffect, useRef, useState } from 'react';
 import { FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -136,6 +137,7 @@ function MessageRow({ m, f, onOpen }: { m: ChatItem; f: Family; onOpen: (m: Chat
       <View style={[s.row, { gap: 8, alignItems: 'flex-end' }]}>
         {kids.length > 0 && <GremlinStack colors={kids.slice(0, 3).map(kidColor)} size={kids.length > 1 ? 26 : 32} />}
         <Content m={m} mine={mine} onOpen={onOpen} />
+        {m.kind === 'text' && kids.length > 0 && !!m.body && <ListenButton id={m.id} text={m.body} />}
       </View>
       {m.failed && <Text style={[s.cap, { color: C.danger }]}>Pas envoyé. Vérifie ta connexion.</Text>}
     </View>
@@ -167,6 +169,46 @@ function Content({ m, mine, onOpen }: { m: ChatItem; mine: boolean; onOpen: (m: 
       <Text style={[s.body, { color: mine ? '#fff' : C.ink }]}>{m.body}</Text>
       <Text style={[s.cap, { color: mine ? '#E9E4FF' : C.inkSoft, textAlign: 'right', marginTop: 2 }]}>{m.pending ? 'Envoi…' : clockTime(m.created_at)}</Text>
     </View>
+  );
+}
+
+/** Which message is being read aloud (one at a time). */
+let speakingId: string | null = null;
+
+/** Reads a child's message aloud (children may write phonetically); a second press stops it. */
+function ListenButton({ id, text }: { id: string; text: string }) {
+  const [on, setOn] = useState(false);
+  useEffect(() => () => {
+    if (speakingId === id) {
+      void Speech.stop();
+      speakingId = null;
+    }
+  }, [id]);
+  const press = () => {
+    void Speech.stop();
+    if (speakingId === id) {
+      speakingId = null;
+      setOn(false);
+      return;
+    }
+    speakingId = id;
+    setOn(true);
+    const done = () => {
+      if (speakingId === id) speakingId = null;
+      setOn(false);
+    };
+    Speech.speak(text, { language: 'fr-FR', onDone: done, onStopped: done, onError: done });
+  };
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={on ? 'Arrêter la lecture' : 'Écouter le message'}
+      onPress={press}
+      hitSlop={8}
+      style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? C.primary : C.primarySoft }}
+    >
+      <Icon name="volume" size={20} color={on ? '#fff' : C.primary} />
+    </Pressable>
   );
 }
 

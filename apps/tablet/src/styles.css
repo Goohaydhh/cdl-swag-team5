@@ -40,7 +40,7 @@ img { -webkit-user-drag: none; }
 [hidden] { display: none !important; }
 
 .app { height: 100%; display: flex; flex-direction: column; position: relative; overflow: hidden; }
-.sb { display: flex; justify-content: space-between; align-items: center; padding: 0 40px; height: 44px; font-weight: 700; flex: none; }
+.sb { display: flex; justify-content: space-between; align-items: center; padding: 0 40px; min-height: 44px; padding-top: max(env(safe-area-inset-top, 0px), 32px); font-weight: 700; flex: none; }
 .row { display: flex; align-items: center; gap: 12px; }
 .grow { flex: 1; min-width: 0; }
 .col { display: flex; flex-direction: column; }

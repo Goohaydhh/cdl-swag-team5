@@ -39,7 +39,7 @@ function Paired({ onRevoked }: { onRevoked: () => void }) {
   return (
     <div className="app">
       <div className="sb">
-        <span>{t.family?.name ?? 'SWAG'}</span>
+        <span />
         <span className="row" style={{ gap: 8 }}>
           {!t.online && (
             <span className="hint" style={{ padding: '4px 14px', fontSize: 14 }}>
@@ -47,7 +47,6 @@ function Paired({ onRevoked }: { onRevoked: () => void }) {
               Hors ligne
             </span>
           )}
-          <Icon name="battery" size={22} stroke={2} />
         </span>
       </div>
 

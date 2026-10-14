@@ -40,21 +40,21 @@ export const statusSoftColor = {
 /** French labels, as written in the designs. */
 export const statusLabel = {
   at_home: 'À la maison',
-  left_home: 'Parti de la maison',
+  left_home: 'Parti à l’école',
   at_friend: 'Chez un ami',
 } as const;
 
 /** What the child taps on the tablet ("I am…"). */
 export const statusChildLabel = {
   at_home: 'Je suis à la maison',
-  left_home: 'Je suis parti',
+  left_home: 'Je suis parti à l’école',
   at_friend: 'Je suis chez un ami',
 } as const;
 
 /** Short labels for the home-screen widget. */
 export const statusShortLabel = {
   at_home: 'Maison',
-  left_home: 'Sorti',
+  left_home: 'Parti à l’école',
   at_friend: 'Chez ami',
 } as const;
 

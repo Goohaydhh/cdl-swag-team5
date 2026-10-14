@@ -2,7 +2,7 @@ import { CODE_ALPHABET, formatCode, SwagApiError } from '@swag/client';
 import { parsePairingQr } from '@swag/protocol';
 import jsQR from 'jsqr';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { deviceInfo } from '../lib/config';
+import { API_URL, deviceInfo, normalizeServer, savedServer, saveServer, testServer } from '../lib/config';
 import { anonymous, type DeviceSession } from '../lib/session';
 import { Gremlin, Icon } from '../ui/art';
 
@@ -16,6 +16,7 @@ export function Pairing({ onPaired }: { onPaired: (s: DeviceSession) => void }) 
   const [step, setStep] = useState<Step>({ name: 'scan' });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [server, setServer] = useState(false);
 
   const join = useCallback(async (code: string, pairingId?: string) => {
     setBusy(true);
@@ -41,11 +42,17 @@ export function Pairing({ onPaired }: { onPaired: (s: DeviceSession) => void }) 
         ) : (
           <span />
         )}
-        <Icon name="battery" size={22} stroke={2} />
+        <span className="row" style={{ gap: 8 }}>
+          <button className="hint" onClick={() => setServer(true)} style={{ padding: '4px 14px', fontSize: 14 }} aria-label="Adresse du serveur">
+            <Icon name="server" size={18} />
+            Serveur
+          </button>
+        </span>
       </div>
-      {step.name === 'scan' && <Scan busy={busy} error={error} onCode={join} onType={() => (setError(null), setStep({ name: 'code' }))} />}
-      {step.name === 'code' && <TypeCode busy={busy} error={error} onBack={() => (setError(null), setStep({ name: 'scan' }))} onCode={(c) => join(c)} />}
-      {step.name === 'wait' && <Wait step={step} onPaired={onPaired} onRestart={() => setStep({ name: 'scan' })} />}
+      {server && <ServerPanel onClose={() => setServer(false)} />}
+      {!server && step.name === 'scan' && <Scan busy={busy} error={error} onCode={join} onType={() => (setError(null), setStep({ name: 'code' }))} />}
+      {!server && step.name === 'code' && <TypeCode busy={busy} error={error} onBack={() => (setError(null), setStep({ name: 'scan' }))} onCode={(c) => join(c)} />}
+      {!server && step.name === 'wait' && <Wait step={step} onPaired={onPaired} onRestart={() => setStep({ name: 'scan' })} />}
     </div>
   );
 }
@@ -59,6 +66,77 @@ function explain(err: unknown): string {
     if (err.code === 'VALIDATION') return 'Le code a 8 caractères, comme K7QF-9M2D.';
   }
   return 'Oups, ça n’a pas marché. Réessaie.';
+}
+
+// ---------------------------------------------------------------- server address (for adults)
+
+/**
+ * The installed app (APK) has no Vite gateway: it must be told where the API is. The address is
+ * saved on the tablet, so one APK works with a PC on the Wi-Fi, an ngrok link or the OVH server.
+ */
+function ServerPanel({ onClose }: { onClose: () => void }) {
+  const [value, setValue] = useState(savedServer() || API_URL);
+  const [state, setState] = useState<'idle' | 'testing' | 'ok' | 'degraded' | 'down' | 'invalid'>('idle');
+  const hasSaved = !!savedServer();
+
+  const test = async () => {
+    const url = normalizeServer(value);
+    if (!url) return setState('invalid');
+    setState('testing');
+    setState(await testServer(url));
+  };
+  const save = () => {
+    const url = normalizeServer(value);
+    if (!url) return setState('invalid');
+    saveServer(url);
+    window.location.reload(); // the API address is read when the app starts
+  };
+  const reset = () => {
+    saveServer('');
+    window.location.reload();
+  };
+
+  const message = {
+    idle: null,
+    testing: 'Test en cours…',
+    ok: '✅ Le serveur répond.',
+    degraded: '⚠️ Le serveur répond, mais sa base de données ne répond pas.',
+    down: '❌ Aucune réponse. Vérifie l’adresse, le Wi-Fi et que l’API tourne.',
+    invalid: '❌ Ce n’est pas une adresse valide, par exemple http://192.168.1.20:5173',
+  }[state];
+
+  return (
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 48px' }}>
+      <div className="card col" style={{ width: 680, maxWidth: '100%', padding: 32, gap: 16, borderRadius: 36 }}>
+        <h1 className="h1">Adresse du serveur</h1>
+        <p style={{ font: '600 18px/26px var(--font-b)', color: 'var(--a-soft)', margin: 0 }}>
+          Réglage pour les adultes : l’adresse du PC qui lance SWAG, avec le port 5173, par exemple http://192.168.1.20:5173, ou un lien ngrok.
+        </p>
+        <label className="cap" htmlFor="server-url">Adresse</label>
+        <input
+          id="server-url"
+          value={value}
+          onChange={(e) => (setValue(e.target.value), setState('idle'))}
+          inputMode="url"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          style={{ height: 64, borderRadius: 20, border: '2px solid var(--a-line)', padding: '0 18px', font: '600 22px var(--font-b)', color: 'var(--a-ink)' }}
+        />
+        {message && (
+          <p role="status" style={{ font: '600 18px/26px var(--font-b)', margin: 0 }}>
+            {message}
+          </p>
+        )}
+        <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
+          <button className="btn soft" onClick={onClose}>Retour</button>
+          <button className="btn soft" onClick={test} disabled={state === 'testing'}>Tester</button>
+          <button className="btn" onClick={save}>Enregistrer</button>
+          {hasSaved && <button className="btn soft" onClick={reset}>Adresse par défaut</button>}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------- K1 scan

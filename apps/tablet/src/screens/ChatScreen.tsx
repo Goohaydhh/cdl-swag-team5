@@ -189,53 +189,35 @@ function speak(text: string) {
   }
 }
 
-// ---------------------------------------------------------------- K8 keyboard
-
-const ROWS = ['AZERTYUIOP', 'QSDFGHJKLM', 'WXCVBN'];
-const ACCENTS = ['É', 'È', 'À', 'Ç'];
+// ---------------------------------------------------------------- K8 keyboard (clavier de la tablette)
 
 function KeyboardPanel({ onSend }: { onSend: (text: string) => void }) {
   const [text, setText] = useState('');
-  const add = (c: string) => setText((s) => (s.length < 300 ? s + c : s));
-  const key = (c: string, w = 88) => (
-    <button key={c} className="keyk" onClick={() => add(c)} aria-label={c} style={{ width: w, height: 60, borderRadius: 16 }}>
-      {c}
-    </button>
-  );
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Met le curseur dans le champ dès l'ouverture : Android affiche alors son clavier.
+  useEffect(() => inputRef.current?.focus(), []);
+  const send = () => text.trim() && onSend(text.trim());
   return (
-    <div className="panel" style={{ alignItems: 'center', gap: 10 }}>
+    <form className="panel" onSubmit={(e) => (e.preventDefault(), send())}>
       <div className="row" style={{ gap: 14, width: '100%' }}>
-        <div className="grow textbox" aria-live="polite">
-          {text ? (
-            <>
-              {text}
-              <i className="caret" />
-            </>
-          ) : (
-            <span style={{ color: 'var(--a-soft)' }}>Écris ton message…</span>
-          )}
-        </div>
-        <button className="bigbtn" disabled={!text.trim()} onClick={() => onSend(text.trim())}>
+        <input
+          ref={inputRef}
+          className="grow textbox"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          maxLength={300}
+          placeholder="Écris ton message…"
+          enterKeyHint="send"
+          autoCapitalize="sentences"
+          lang="fr"
+          style={{ border: 0, outline: 'none', userSelect: 'text', WebkitUserSelect: 'text' }}
+        />
+        <button type="submit" className="bigbtn" disabled={!text.trim()}>
           <Icon name="send" size={32} color="#fff" stroke={2.4} />
           Envoyer
         </button>
       </div>
-      {ROWS.map((r, i) => (
-        <div className="row" style={{ gap: 8, justifyContent: 'center' }} key={r}>
-          {r.split('').map((c) => key(c))}
-          {i === 2 && ACCENTS.map((c) => key(c))}
-        </div>
-      ))}
-      <div className="row" style={{ gap: 8, justifyContent: 'center' }}>
-        <button className="keyk" onClick={() => setText((s) => s.slice(0, -1))} aria-label="Effacer" style={{ width: 150, height: 60, borderRadius: 16 }}>
-          <Icon name="del" size={30} stroke={2.4} />
-        </button>
-        <button className="keyk" onClick={() => add(' ')} aria-label="Espace" style={{ width: 420, height: 60, borderRadius: 16, fontSize: 20 }}>
-          espace
-        </button>
-        {['?', '!', '.', ','].map((c) => key(c, 76))}
-      </div>
-    </div>
+    </form>
   );
 }
 
