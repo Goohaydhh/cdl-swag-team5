@@ -1,6 +1,8 @@
 packages:
   - apps/*
   - packages/*
+# React Native / Expo need a flat node_modules (short paths for the Android C++ build).
+nodeLinker: hoisted
 allowBuilds:
   '@prisma/engines': true
   '@swc/core': true

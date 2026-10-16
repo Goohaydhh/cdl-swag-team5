@@ -1,11 +1,12 @@
 import { SwagApiError } from '@swag/client';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { DEVICE_NAME } from '../lib/config';
+import { API_URL, DEVICE_NAME } from '../lib/config';
 import { api, signedIn } from '../lib/session';
 import { Gremlin } from '../ui/art';
 import { Button, Checkbox } from '../ui/kit';
 import { C, s } from '../ui/theme';
+import { ServerPanel } from './ServerPanel';
 
 /** P0 "Créer ma famille" (register) or sign in. */
 export function Onboarding() {
@@ -17,6 +18,7 @@ export function Onboarding() {
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [server, setServer] = useState(false);
 
   const submit = async () => {
     setBusy(true);
@@ -79,6 +81,10 @@ export function Onboarding() {
             {mode === 'register' ? 'J’ai déjà un compte · Me connecter' : 'Pas encore de compte · Créer ma famille'}
           </Text>
         </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => setServer(true)} style={{ paddingVertical: 8 }}>
+          <Text style={[s.cap, { textAlign: 'center' }]}>Serveur : {API_URL.replace(/^https?:\/\//, '')}</Text>
+        </Pressable>
+        {server && <ServerPanel onClose={() => setServer(false)} />}
       </ScrollView>
     </KeyboardAvoidingView>
   );
