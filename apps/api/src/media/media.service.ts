@@ -1,15 +1,10 @@
-import {
-  DeleteObjectsCommand,
-  GetObjectCommand,
-  PutObjectCommand,
-  S3Client,
-} from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Inject, Injectable } from '@nestjs/common';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import sharp, { type OutputInfo } from 'sharp';
 import type { Principal } from '../auth/principal';
 import { ApiError } from '../common/api-error';
-import { newId } from '../common/crypto';
+import { hmacSha256, newId, safeEqualHex } from '../common/crypto';
 import { RateLimitService } from '../common/rate-limit.service';
 import { ENV, type Env } from '../config/env';
 import { PrismaService } from '../prisma/prisma.service';
@@ -19,24 +14,20 @@ const MAX_SIDE = 2048;
 const SIGNED_URL_SECONDS = 5 * 60;
 const ACCEPTED_INPUT = new Set(['png', 'webp']);
 
-/** Drawings and avatars in a private bucket, served through short-lived signed URLs. */
+/**
+ * Drawings and avatars stored on local disk (Termux tablet-as-server test), served by the API
+ * itself through short-lived signed links — the same signing used for GIF previews. No S3.
+ */
 @Injectable()
 export class MediaService {
-  private readonly s3: S3Client;
-  private readonly bucket: string;
+  private readonly baseDir: string;
 
   constructor(
-    @Inject(ENV) env: Env,
+    @Inject(ENV) private readonly env: Env,
     private readonly prisma: PrismaService,
     private readonly rateLimit: RateLimitService,
   ) {
-    this.bucket = env.S3_BUCKET;
-    this.s3 = new S3Client({
-      endpoint: env.S3_ENDPOINT,
-      region: env.S3_REGION,
-      forcePathStyle: true,
-      credentials: { accessKeyId: env.S3_ACCESS_KEY, secretAccessKey: env.S3_SECRET_KEY },
-    });
+    this.baseDir = process.env.MEDIA_DIR || join(process.env.HOME ?? process.cwd(), 'swag-media');
   }
 
   /**
@@ -70,9 +61,9 @@ export class MediaService {
   async store(familyId: string, data: Buffer, mime: string, width?: number, height?: number) {
     const id = newId();
     const storageKey = `families/${familyId}/media/${id}`;
-    await this.s3.send(
-      new PutObjectCommand({ Bucket: this.bucket, Key: storageKey, Body: data, ContentType: mime }),
-    );
+    const full = join(this.baseDir, storageKey);
+    await mkdir(dirname(full), { recursive: true });
+    await writeFile(full, data);
     return this.prisma.mediaObject.create({
       data: { id, familyId, storageKey, mime, bytes: data.length, width: width ?? null, height: height ?? null },
     });
@@ -83,33 +74,36 @@ export class MediaService {
     if (!found) throw ApiError.validation('Unknown media_id; upload the drawing first');
   }
 
+  /** A signed, short-lived link to our own /v1/media/:id/raw route (works in an <img> tag). */
   async signedUrl(p: Principal, mediaId: string) {
     const media = await this.prisma.mediaObject.findFirst({ where: { id: mediaId, familyId: p.fam } });
     if (!media) throw ApiError.notFound('Media');
-    const url = await getSignedUrl(
-      this.s3,
-      new GetObjectCommand({ Bucket: this.bucket, Key: media.storageKey }),
-      { expiresIn: SIGNED_URL_SECONDS },
-    );
+    const exp = Math.floor(Date.now() / 1000) + SIGNED_URL_SECONDS;
+    const url = `/v1/media/${media.id}/raw?exp=${exp}&sig=${this.sign(media.id, exp)}`;
     return { id: media.id, mime: media.mime, url, expires_in: SIGNED_URL_SECONDS };
+  }
+
+  /** Streams the file after checking the signed link (used by the public raw route). */
+  async readSigned(mediaId: string, exp: number, sig: string): Promise<{ data: Buffer; mime: string }> {
+    if (exp < Date.now() / 1000 || !safeEqualHex(this.sign(mediaId, exp), sig)) throw ApiError.notFound('Media');
+    const media = await this.prisma.mediaObject.findUnique({ where: { id: mediaId } });
+    if (!media) throw ApiError.notFound('Media');
+    return { data: await this.read(media.storageKey), mime: media.mime };
   }
 
   /** Deletes stored objects; used by retention and erasure jobs. */
   async deleteObjects(storageKeys: string[]) {
-    for (let i = 0; i < storageKeys.length; i += 1000) {
-      const chunk = storageKeys.slice(i, i + 1000);
-      await this.s3.send(
-        new DeleteObjectsCommand({
-          Bucket: this.bucket,
-          Delete: { Objects: chunk.map((Key) => ({ Key })), Quiet: true },
-        }),
-      );
+    for (const key of storageKeys) {
+      await rm(join(this.baseDir, key), { force: true });
     }
   }
 
   /** Raw bytes of a stored object (data export). */
   async read(storageKey: string): Promise<Buffer> {
-    const res = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket, Key: storageKey }));
-    return Buffer.from(await res.Body!.transformToByteArray());
+    return readFile(join(this.baseDir, storageKey));
+  }
+
+  private sign(mediaId: string, exp: number) {
+    return hmacSha256(this.env.PAIRING_CODE_PEPPER, `media:${mediaId}:${exp}`);
   }
 }

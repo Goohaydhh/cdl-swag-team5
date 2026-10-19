@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
-import { publicMediaUrl } from './config';
 import { api } from './session';
+import { API_URL } from './config';
 
-// Drawings and GIFs live in a private bucket behind 5-minute signed URLs.
+// Drawings and GIFs are served by the API behind 5-minute signed links.
+// The server returns a path like /v1/media/:id/raw?...; make it absolute.
+const absolute = (url: string) => new URL(url, API_URL).toString();
+
 const cache = new Map<string, { url: string; until: number }>();
 const fresh = (id: string) => {
   const hit = cache.get(id);
@@ -17,11 +20,11 @@ export function useMediaUrl(mediaId: string | undefined): string | null {
     api
       .media(mediaId)
       .then((m) => {
-        const url = publicMediaUrl(m.url);
+        const url = absolute(m.url);
         cache.set(mediaId, { url, until: Date.now() + (m.expires_in - 30) * 1000 });
         if (alive) setLoaded({ id: mediaId, url });
       })
-      .catch(() => undefined);
+      .catch((err) => console.warn('[media]', mediaId, err));
     return () => {
       alive = false;
     };

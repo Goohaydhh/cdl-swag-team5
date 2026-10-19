@@ -43,6 +43,20 @@ export class MediaController {
     return this.media.signedUrl(p, id);
   }
 
+  /** Public, but only reachable through a signed link from `GET media/:id`. */
+  @Public()
+  @Get('media/:id/raw')
+  async raw(
+    @Param('id', UuidParam) id: string,
+    @Query(new ZodPipe(PreviewQuery)) q: z.infer<typeof PreviewQuery>,
+    @Res() res: Response,
+  ) {
+    const { data, mime } = await this.media.readSigned(id, q.exp, q.sig);
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.send(data);
+  }
+
   @Scopes('parent', 'child', 'device')
   @Get('gifs/search')
   search(@CurrentPrincipal() p: Principal, @Query(new ZodPipe(GifSearchQuery)) q: GifSearchQuery) {

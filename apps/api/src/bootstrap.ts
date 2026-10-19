@@ -14,7 +14,7 @@ export async function configureApp(app: INestApplication): Promise<Env> {
   app.useGlobalFilters(new AllExceptionsFilter());
   app.enableShutdownHooks();
   // JSON API only: no HTML, so the strictest policy costs nothing.
-  app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'none'"] } } }));
+  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' }, contentSecurityPolicy: { directives: { defaultSrc: ["'none'"] } } }));
   app.enableCors({ origin: env.CORS_ORIGINS, credentials: false });
   http.useBodyParser('json', { limit: '100kb' });
   http.disable('x-powered-by');
