@@ -152,7 +152,14 @@ export function useFamily() {
   }, []);
 
   const send = useCallback(
-    async (content: { kind: 'text'; body: string } | { kind: 'sticker'; sticker_code: string } | { kind: 'gif'; gif_ref: string }) => {
+    async (
+      content:
+        | { kind: 'text'; body: string }
+        | { kind: 'sticker'; sticker_code: string }
+        | { kind: 'gif'; gif_ref: string }
+        // The parent can draw too since 21/10/2026 (see screens/DrawScreen).
+        | { kind: 'drawing'; media_id: string },
+    ) => {
       if (!conversationId || !me) return;
       const clientMsgId = randomUUID();
       const optimistic: ChatItem = {

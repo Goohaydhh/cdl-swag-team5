@@ -104,22 +104,61 @@ export class AuthService {
     }
   }
 
-  /** Creates the parent's phone record (for push) and issues tokens bound to it. */
+  /** Records the parent's phone (for push) and issues tokens bound to it. */
   async signIn(user: User, device: ParentDevice, tx: Prisma.TransactionClient = this.prisma) {
-    let deviceId: string | undefined;
-    if (device) {
-      deviceId = newId();
-      await tx.device.create({
-        data: {
-          id: deviceId,
-          familyId: user.familyId,
-          kind: 'parent_phone',
-          ownerUserId: user.id,
-          name: device.name,
-          platformInfo: device.platform ?? {},
-        },
-      });
-    }
+    const deviceId = device ? await this.rememberPhone(user, device, tx) : undefined;
     return { user: toUserDto(user), tokens: await this.tokens.issueParentTokens(user, deviceId) };
+  }
+
+  /**
+   * One row per physical phone, not one per sign-in. The phone sends a stable `install_id`,
+   * so signing in again (after a lost connection, or after signing out) updates its existing
+   * "Appareil" instead of adding another one to the family — the test on 21/10/2026 ended up
+   * with eleven "Téléphone Android" in one family.
+   *
+   * A phone that sends no `install_id` keeps the old behaviour: a fresh row each time.
+   */
+  private async rememberPhone(
+    user: User,
+    device: NonNullable<ParentDevice>,
+    tx: Prisma.TransactionClient,
+  ): Promise<string> {
+    const platformInfo = (device.platform ?? {}) as Prisma.InputJsonObject;
+    if (device.install_id) {
+      const known = await tx.device.findFirst({
+        where: {
+          familyId: user.familyId,
+          ownerUserId: user.id,
+          kind: 'parent_phone',
+          installId: device.install_id,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (known) {
+        // `revokedAt` is cleared because this row is this phone again: it was set when the
+        // parent signed out, and the tokens issued below are bound to this same device id.
+        await tx.device.update({
+          where: { id: known.id },
+          data: { name: device.name, platformInfo, lastSeenAt: new Date(), revokedAt: null },
+        });
+        await this.tokens.clearDeviceRevoked(known.id);
+        return known.id;
+      }
+    }
+
+    const deviceId = newId();
+    await tx.device.create({
+      data: {
+        id: deviceId,
+        familyId: user.familyId,
+        kind: 'parent_phone',
+        ownerUserId: user.id,
+        name: device.name,
+        platformInfo,
+        installId: device.install_id ?? null,
+        lastSeenAt: new Date(),
+      },
+    });
+    return deviceId;
   }
 }

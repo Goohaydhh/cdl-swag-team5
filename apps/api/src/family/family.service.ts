@@ -33,6 +33,8 @@ const toDeviceDto = (d: Device & { children?: { childProfileId: string }[] }) =>
   kind: d.kind,
   name: d.name,
   platform_info: d.platformInfo,
+  /** Parent phones: whose phone it is, so "Famille et appareils" can say so. */
+  owner_user_id: d.ownerUserId,
   child_ids: d.children?.map((c) => c.childProfileId) ?? [],
   last_seen_at: d.lastSeenAt?.toISOString() ?? null,
   revoked_at: d.revokedAt?.toISOString() ?? null,

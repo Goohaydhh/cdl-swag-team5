@@ -14,7 +14,8 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "fr.centraledigitallab.swag.parent"
+      "package": "fr.centraledigitallab.swag.parent",
+      "permissions": ["android.permission.POST_NOTIFICATIONS"]
     },
     "web": {
       "favicon": "./assets/favicon.png"

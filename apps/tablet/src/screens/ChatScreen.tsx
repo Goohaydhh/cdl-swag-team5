@@ -1,17 +1,21 @@
-import { type GifSearchResult, speakerLabel, SwagApiError } from '@swag/client';
+import { speakerLabel } from '@swag/client';
 import { swagStickers } from '@swag/design-tokens';
 import { useEffect, useRef, useState } from 'react';
 import { useMediaUrl } from '../lib/media';
-import { api } from '../lib/session';
 import type { ChatItem, Kid, Tablet } from '../lib/useTablet';
 import { Gremlin, GremlinStack, Icon, Initial, Sticker } from '../ui/art';
 import { kidColor, PARENT_COLORS } from '../ui/colors';
 import { WhoChips } from '../ui/WhoChips';
 
-type Panel = null | 'gif' | 'kb';
+type Panel = null | 'kb';
 
-/** K6-K10: the family chat (the only conversation), with stickers, GIFs and a big keyboard. */
-export function ChatScreen({ t, onBack, onDraw }: { t: Tablet; onBack: () => void; onDraw: () => void }) {
+/**
+ * K6-K10: the family chat (the only conversation), with stickers and a big keyboard.
+ *
+ * There is no "go back" button any more: the children found it unnatural and asked for the two
+ * always-visible buttons of the parent app instead, so the dock switches spaces (App.tsx).
+ */
+export function ChatScreen({ t, onDraw }: { t: Tablet; onDraw: () => void }) {
   const [panel, setPanel] = useState<Panel>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const { markRead, setChatOpen } = t;
@@ -30,9 +34,11 @@ export function ChatScreen({ t, onBack, onDraw }: { t: Tablet; onBack: () => voi
   return (
     <>
       <div className="row topbar">
-        <button className="iconbtn bg" onClick={() => (panel ? setPanel(null) : onBack())} aria-label="Retour">
-          <Icon name="left" size={32} stroke={2.6} />
-        </button>
+        {panel && (
+          <button className="iconbtn bg" onClick={() => setPanel(null)} aria-label="Fermer">
+            <Icon name="left" size={32} stroke={2.6} />
+          </button>
+        )}
         <h1 className="h1 grow">Toute la famille</h1>
         <WhoChips kids={t.kids} who={t.who} onChange={t.setWho} />
       </div>
@@ -80,8 +86,6 @@ export function ChatScreen({ t, onBack, onDraw }: { t: Tablet; onBack: () => voi
 
       {panel === 'kb' ? (
         <KeyboardPanel onSend={(text) => (t.sendMessage({ kind: 'text', body: text }), setPanel(null))} />
-      ) : panel === 'gif' ? (
-        <GifPanel onStickers={() => setPanel(null)} onPick={(ref) => (t.sendMessage({ kind: 'gif', gif_ref: ref }), setPanel(null))} />
       ) : (
         <div className="tray">
           {swagStickers.map((code) => (
@@ -89,9 +93,6 @@ export function ChatScreen({ t, onBack, onDraw }: { t: Tablet; onBack: () => voi
               <Sticker code={code} size={72} />
             </button>
           ))}
-          <button className="st" onClick={() => setPanel('gif')} aria-label="Choisir un GIF" style={{ font: '700 24px var(--font-d)', color: 'var(--a-primary)' }}>
-            GIF
-          </button>
           <button className="st" onClick={() => setPanel('kb')} aria-label="Écrire un message" style={{ color: 'var(--a-primary)' }}>
             <Icon name="keyboard" size={44} />
           </button>
@@ -166,27 +167,14 @@ function Content({ m, mine }: { m: ChatItem; mine: boolean }) {
       </div>
     );
   }
+  // The "lire à voix haute" button was removed on 21/10/2026: nothing happened when the children
+  // touched it (no speech engine in the tablet's webview). To come back as a real accessibility
+  // option, with the other ones.
   return (
     <div className="card row bubble-them">
       <span className="msgtext">{m.body}</span>
-      <button className="pill" onClick={() => speak(m.body ?? '')} style={{ width: 64, height: 64, background: 'var(--a-primary-soft)', color: 'var(--a-primary)', display: 'grid', placeItems: 'center', flex: 'none' }} aria-label="Lire à voix haute">
-        <Icon name="volume" size={32} />
-      </button>
     </div>
   );
-}
-
-/** Reads a parent's message aloud for children who do not read yet. */
-function speak(text: string) {
-  try {
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'fr-FR';
-    u.rate = 0.9;
-    speechSynthesis.cancel();
-    speechSynthesis.speak(u);
-  } catch {
-    // No speech engine on this tablet.
-  }
 }
 
 // ---------------------------------------------------------------- K8 keyboard (clavier de la tablette)
@@ -218,60 +206,5 @@ function KeyboardPanel({ onSend }: { onSend: (text: string) => void }) {
         </button>
       </div>
     </form>
-  );
-}
-
-// ---------------------------------------------------------------- K7 GIFs
-
-const GIF_TOPICS = ['Bravo', 'Rigolo', 'Câlin', 'Fête', 'Animaux'];
-
-function GifPanel({ onPick, onStickers }: { onPick: (gifRef: string) => void; onStickers: () => void }) {
-  const [topic, setTopic] = useState(GIF_TOPICS[0]!);
-  const [state, setState] = useState<{ topic: string; result?: GifSearchResult; error?: string } | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    api
-      .searchGifs(topic)
-      .then((result) => alive && setState({ topic, result }))
-      .catch((err: unknown) => {
-        if (!alive) return;
-        const error =
-          err instanceof SwagApiError && err.status === 503
-            ? 'Les GIF ne sont pas disponibles pour le moment.'
-            : 'Pas de connexion pour chercher des GIF.';
-        setState({ topic, error });
-      });
-    return () => {
-      alive = false;
-    };
-  }, [topic]);
-  const current = state?.topic === topic ? state : null;
-  const result = current?.result ?? null;
-  const error = current?.error ?? null;
-
-  return (
-    <div className="panel">
-      <div className="row" style={{ gap: 10 }}>
-        <button className="chipk" onClick={onStickers}>Autocollants</button>
-        <span className="chipk" style={{ background: 'var(--a-primary)', color: '#fff' }}>GIF</span>
-        <span className="grow" />
-        {GIF_TOPICS.map((c) => (
-          <button key={c} className="chipk" aria-pressed={c === topic} onClick={() => setTopic(c)}>
-            {c}
-          </button>
-        ))}
-      </div>
-      <div className="gifgrid">
-        {error && <p className="lead">{error}</p>}
-        {!error && !result && <p className="lead">Je cherche des GIF…</p>}
-        {result?.items.slice(0, 12).map((g) => (
-          <button key={g.gif_ref} onClick={() => onPick(g.gif_ref)} aria-label={`Envoyer le GIF ${g.title}`}>
-            <img src={api.absolute(g.preview_path)} alt="" loading="lazy" />
-          </button>
-        ))}
-      </div>
-      {result && <div className="cap">{result.attribution} · GIF adaptés aux enfants</div>}
-    </div>
   );
 }

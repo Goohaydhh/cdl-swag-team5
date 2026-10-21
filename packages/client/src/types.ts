@@ -73,10 +73,20 @@ export interface DeviceDto {
   kind: 'parent_phone' | 'child_tablet';
   name: string;
   platform_info: Record<string, unknown>;
+  /** Parent phones: the parent this phone belongs to. Null for tablets. */
+  owner_user_id: string | null;
   child_ids: string[];
   last_seen_at: string | null;
   revoked_at: string | null;
   created_at: string;
+}
+
+/** A code another parent types in "Rejoindre ma famille" (valid 24 h, single use). */
+export interface InviteDto {
+  invite_id: string;
+  code: string;
+  qr_payload: string;
+  expires_at: string;
 }
 
 export interface PairingSessionDto {

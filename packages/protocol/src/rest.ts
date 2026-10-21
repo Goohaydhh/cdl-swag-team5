@@ -24,6 +24,12 @@ export type DeviceInfo = z.infer<typeof DeviceInfo>;
 export const ParentDeviceInput = z.object({
   name: z.string().trim().min(1).max(60),
   platform: DeviceInfo.optional(),
+  /**
+   * Stable id kept by the installation (phone storage). Sent on every sign-in so the API
+   * reuses this phone's "Appareil" instead of adding one to the family each time.
+   * Optional: a phone built before this existed simply gets a new row, as it used to.
+   */
+  install_id: id.optional(),
 });
 
 export const RegisterInput = z.object({

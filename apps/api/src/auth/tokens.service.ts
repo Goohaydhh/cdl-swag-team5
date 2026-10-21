@@ -115,6 +115,14 @@ export class TokensService {
     await this.redis.client.set(revokedKey(deviceId), '1', { EX: REVOKED_MARKER_TTL });
   }
 
+  /**
+   * Clears that marker. Used when a parent signs in again on a phone they had signed out of:
+   * the same device row is reused, so its fresh tokens must be accepted.
+   */
+  async clearDeviceRevoked(deviceId: string): Promise<void> {
+    await this.redis.client.del(revokedKey(deviceId));
+  }
+
   async isRevoked(principal: Principal): Promise<boolean> {
     if (!principal.dev) return false;
     return (await this.redis.client.exists(revokedKey(principal.dev))) === 1;

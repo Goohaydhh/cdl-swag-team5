@@ -89,7 +89,9 @@ describe('drawings (FR-11)', () => {
       .expect(201);
 
     const link = await api(t, parent.token).get(`/media/${upload.body.id}`).expect(200);
-    const file = await fetch(link.body.url);
+    // The signed link is relative (`/v1/media/...`): the API serves the file itself, so each
+    // client resolves it against the address it reached the API on. Here, the test server.
+    const file = await fetch(`${t.url}${link.body.url}`);
     expect(file.ok).toBe(true);
     const meta = await sharp(Buffer.from(await file.arrayBuffer())).metadata();
     expect(meta.format).toBe('png');
@@ -155,7 +157,7 @@ describe('GIFs through the backend (FR-11, section 5.5)', () => {
     const link = await api(t, parent.token).get(`/media/${mediaId}`).expect(200);
     expect(link.body.mime).toBe('image/gif');
     expect(link.body.url).not.toContain('127.0.0.1:' + new URL(giphyUrl).port);
-    expect(Buffer.from(await (await fetch(link.body.url)).arrayBuffer())).toEqual(GIF_BYTES);
+    expect(Buffer.from(await (await fetch(`${t.url}${link.body.url}`)).arrayBuffer())).toEqual(GIF_BYTES);
   });
 
   it('refuses to send a GIF that is not rated g', async () => {

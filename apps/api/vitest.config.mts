@@ -24,6 +24,9 @@ export default defineConfig({
       JWT_PRIVATE_KEY_PATH: './keys/jwt-test.pem',
       ALLOW_DEV_TOKENS: 'false',
       TRUST_PROXY_HOPS: '1',
+      // Pinned: ConfigModule also loads apps/api/.env, whose CORS_ORIGINS differs from one
+      // machine to the next, and the hardening test asserts https://localhost is allowed.
+      CORS_ORIGINS: 'https://localhost,http://localhost:5173,capacitor://localhost',
       S3_ENDPOINT: s3,
       S3_REGION: 'fr-par',
       S3_BUCKET: 'swag-test',

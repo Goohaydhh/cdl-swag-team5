@@ -1,7 +1,9 @@
+import { randomUUID } from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
 const SERVER_KEY = 'swag.server';
+const INSTALL_KEY = 'swag.install';
 
 /** Address built into the app (.env), used when nothing is saved on the phone. */
 export const DEFAULT_API_URL =
@@ -59,3 +61,23 @@ export async function testServer(url: string): Promise<'ok' | 'degraded' | 'down
 export const API_URL = savedServer() || DEFAULT_API_URL;
 
 export const DEVICE_NAME = Platform.OS === 'ios' ? 'iPhone' : 'Téléphone Android';
+
+/**
+ * Stable id for this installation, created once and kept on the phone. Sent at sign-in so the
+ * family keeps one "Appareil" per phone instead of adding one on every connection.
+ */
+export function installId(): string | undefined {
+  try {
+    const saved = SecureStore.getItem(INSTALL_KEY);
+    if (saved) return saved;
+    const fresh = randomUUID();
+    SecureStore.setItem(INSTALL_KEY, fresh);
+    return fresh;
+  } catch {
+    // Secure storage unavailable (web): the API falls back to one row per sign-in.
+    return undefined;
+  }
+}
+
+/** The `device` block every sign-in sends: this phone, identified across connections. */
+export const thisDevice = () => ({ name: DEVICE_NAME, install_id: installId() });

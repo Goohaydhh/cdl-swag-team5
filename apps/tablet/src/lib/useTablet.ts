@@ -13,6 +13,7 @@ import { io, type Socket } from 'socket.io-client';
 import { API_URL } from './config';
 import { enqueue, flush, onOutboxChange, pending } from './outbox';
 import { api, DeviceRevokedError, getAccessToken } from './session';
+import { playMessageSound } from './sound';
 import { load, save } from './storage';
 
 export type Kid = DeviceProfilesDto['children'][number];
@@ -137,6 +138,8 @@ export function useTablet(onRevoked: () => void) {
           });
           if (data.message.sender.type === 'user') {
             setTyping(null);
+            // Ring even when the chat is open: the child may be in another room.
+            playMessageSound();
             if (!chatOpen.current) setUnread((u) => u + 1);
           }
         });

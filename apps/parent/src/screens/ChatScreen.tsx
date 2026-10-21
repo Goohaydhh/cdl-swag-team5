@@ -1,26 +1,31 @@
-import { type GifSearchResult, speakerLabel, SwagApiError } from '@swag/client';
+import { speakerLabel } from '@swag/client';
 import { swagStickers } from '@swag/design-tokens';
-import * as Speech from 'expo-speech';
-import { useEffect, useRef, useState } from 'react';
-import { FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { FlatList, Image, KeyboardAvoidingView, Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { clockTime } from '../lib/format';
 import { useMediaUrl } from '../lib/media';
-import { api } from '../lib/session';
 import type { ChatItem, Family } from '../lib/useFamily';
 import { Gremlin, Icon, kidColor, Sticker } from '../ui/art';
 import { Button, GremlinStack, TopBar } from '../ui/kit';
 import { C, F, s, shadowCard } from '../ui/theme';
+import { DrawScreen } from './DrawScreen';
 
-type Panel = null | 'stickers' | 'gif';
+type Panel = null | 'stickers';
 
-/** P2 "Chat famille" (the only conversation), P3 GIFs, P4 a drawing in full screen. */
+/** P2 "Chat famille" (the only conversation), P4 a drawing in full screen. */
 export function ChatScreen({ f }: { f: Family }) {
   const [panel, setPanel] = useState<Panel>(null);
   const [text, setText] = useState('');
   const [viewing, setViewing] = useState<ChatItem | null>(null);
-  const listRef = useRef<FlatList<ChatItem>>(null);
+  const [drawing, setDrawing] = useState(false);
   const { markRead, setChatOpen } = f;
+  /**
+   * Newest first, drawn in an inverted list: the chat then opens on the last message with no
+   * scrolling at all. `scrollToEnd` used to land a few messages short, because a virtualised
+   * list only estimates the height of the rows it has not measured yet (bug report, 21/10/2026).
+   */
+  const newestFirst = useMemo(() => [...f.messages].reverse(), [f.messages]);
   const kids = f.overview?.children ?? [];
   const members = [...kids.map((k) => k.display_name), ...(f.overview?.parents ?? []).map((p) => (p.id === f.me ? 'toi' : p.display_name))];
 
@@ -43,7 +48,9 @@ export function ChatScreen({ f }: { f: Family }) {
   const typingNames = f.typingKids.map((id) => kids.find((k) => k.id === id)?.display_name).filter(Boolean) as string[];
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    // "padding" on Android too: with edge-to-edge (the default since SDK 54) the window is no
+    // longer resized by the keyboard, so without it the text box sits behind it (test feedback).
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
       <TopBar
         title="Toute la famille"
         subtitle={members.join(', ')}
@@ -54,11 +61,11 @@ export function ChatScreen({ f }: { f: Family }) {
         }
       />
       <FlatList
-        ref={listRef}
-        data={f.messages}
+        data={newestFirst}
+        // Only when there is something to show: an inverted empty state renders upside down.
+        inverted={newestFirst.length > 0}
         keyExtractor={(m) => m.id}
         contentContainerStyle={{ padding: 16, gap: 12 }}
-        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
         ListEmptyComponent={
           <View style={{ alignItems: 'center', gap: 10, paddingTop: 60 }}>
             <Gremlin color={C.primary} size={96} />
@@ -66,8 +73,9 @@ export function ChatScreen({ f }: { f: Family }) {
             <Text style={[s.cap, { textAlign: 'center' }]}>Les messages, dessins et autocollants des enfants arrivent ici.</Text>
           </View>
         }
-        ListFooterComponent={
-          typingNames.length ? <Text style={[s.cap, { marginTop: 8 }]}>{speakerLabel(typingNames)} écrit…</Text> : null
+        // Inverted: the header sits at the visual bottom, just under the newest message.
+        ListHeaderComponent={
+          typingNames.length ? <Text style={[s.cap, { marginBottom: 8 }]}>{speakerLabel(typingNames)} écrit…</Text> : null
         }
         renderItem={({ item }) => <MessageRow m={item} f={f} onOpen={setViewing} />}
       />
@@ -81,14 +89,13 @@ export function ChatScreen({ f }: { f: Family }) {
           ))}
         </View>
       )}
-      {panel === 'gif' && <GifPanel onPick={(ref) => (void f.send({ kind: 'gif', gif_ref: ref }), setPanel(null))} />}
 
       <View style={[s.row, { paddingHorizontal: 12, paddingVertical: 10, backgroundColor: C.surface, gap: 8 }]}>
         <Pressable accessibilityRole="button" accessibilityLabel="Autocollants" onPress={() => setPanel(panel === 'stickers' ? null : 'stickers')} style={pill(panel === 'stickers')}>
           <Icon name="smile" size={24} color={panel === 'stickers' ? '#fff' : C.primary} />
         </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="GIF" onPress={() => setPanel(panel === 'gif' ? null : 'gif')} style={[pill(panel === 'gif'), { width: undefined, paddingHorizontal: 12 }]}>
-          <Text style={{ fontFamily: F.b700, fontSize: 14, color: panel === 'gif' ? '#fff' : C.primary }}>GIF</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="Dessiner" onPress={() => setDrawing(true)} style={pill(false)}>
+          <Icon name="brush" size={22} color={C.primary} stroke={2.4} />
         </Pressable>
         <TextInput
           style={{ flex: 1, minWidth: 0, height: 48, borderRadius: 999, backgroundColor: C.background, paddingHorizontal: 16, fontFamily: F.b600, fontSize: 16, color: C.ink }}
@@ -107,6 +114,7 @@ export function ChatScreen({ f }: { f: Family }) {
       </View>
 
       <DrawingViewer m={viewing} f={f} onClose={() => setViewing(null)} />
+      <DrawScreen visible={drawing} f={f} onClose={() => setDrawing(false)} onSent={() => setDrawing(false)} />
     </KeyboardAvoidingView>
   );
 }
@@ -137,7 +145,6 @@ function MessageRow({ m, f, onOpen }: { m: ChatItem; f: Family; onOpen: (m: Chat
       <View style={[s.row, { gap: 8, alignItems: 'flex-end' }]}>
         {kids.length > 0 && <GremlinStack colors={kids.slice(0, 3).map(kidColor)} size={kids.length > 1 ? 26 : 32} />}
         <Content m={m} mine={mine} onOpen={onOpen} />
-        {m.kind === 'text' && kids.length > 0 && !!m.body && <ListenButton id={m.id} text={m.body} />}
       </View>
       {m.failed && <Text style={[s.cap, { color: C.danger }]}>Pas envoyé. Vérifie ta connexion.</Text>}
     </View>
@@ -172,45 +179,9 @@ function Content({ m, mine, onOpen }: { m: ChatItem; mine: boolean; onOpen: (m: 
   );
 }
 
-/** Which message is being read aloud (one at a time). */
-let speakingId: string | null = null;
-
-/** Reads a child's message aloud (children may write phonetically); a second press stops it. */
-function ListenButton({ id, text }: { id: string; text: string }) {
-  const [on, setOn] = useState(false);
-  useEffect(() => () => {
-    if (speakingId === id) {
-      void Speech.stop();
-      speakingId = null;
-    }
-  }, [id]);
-  const press = () => {
-    void Speech.stop();
-    if (speakingId === id) {
-      speakingId = null;
-      setOn(false);
-      return;
-    }
-    speakingId = id;
-    setOn(true);
-    const done = () => {
-      if (speakingId === id) speakingId = null;
-      setOn(false);
-    };
-    Speech.speak(text, { language: 'fr-FR', onDone: done, onStopped: done, onError: done });
-  };
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={on ? 'Arrêter la lecture' : 'Écouter le message'}
-      onPress={press}
-      hitSlop={8}
-      style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? C.primary : C.primarySoft }}
-    >
-      <Icon name="volume" size={20} color={on ? '#fff' : C.primary} />
-    </Pressable>
-  );
-}
+// The "écouter le message" button was removed on 21/10/2026: text-to-speech never spoke on the
+// tablet, and the tester asked for it to go from the parent app too until it is a real
+// accessibility option (alongside things like different avatar shapes).
 
 /** P4: the drawing in big, with sticker reactions sent back to the family chat. */
 function DrawingViewer({ m, f, onClose }: { m: ChatItem | null; f: Family; onClose: () => void }) {
@@ -248,51 +219,5 @@ function DrawingViewer({ m, f, onClose }: { m: ChatItem | null; f: Family; onClo
         </View>
       </View>
     </Modal>
-  );
-}
-
-const GIF_TOPICS = ['Bravo', 'Rigolo', 'Câlin', 'Fête'];
-
-function GifPanel({ onPick }: { onPick: (gifRef: string) => void }) {
-  const [topic, setTopic] = useState(GIF_TOPICS[0]!);
-  const [state, setState] = useState<{ topic: string; result?: GifSearchResult; error?: string } | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    api
-      .searchGifs(topic)
-      .then((result) => alive && setState({ topic, result }))
-      .catch((err: unknown) => {
-        if (!alive) return;
-        setState({ topic, error: err instanceof SwagApiError && err.status === 503 ? 'GIF indisponibles pour le moment.' : 'Pas de connexion.' });
-      });
-    return () => {
-      alive = false;
-    };
-  }, [topic]);
-  const current = state?.topic === topic ? state : null;
-
-  return (
-    <View style={{ backgroundColor: C.surface, padding: 12, gap: 10, borderTopLeftRadius: 24, borderTopRightRadius: 24, ...shadowCard }}>
-      <View style={[s.row, { gap: 6 }]}>
-        {GIF_TOPICS.map((t) => (
-          <Pressable accessibilityRole="button" key={t} onPress={() => setTopic(t)} style={{ height: 30, paddingHorizontal: 12, borderRadius: 999, justifyContent: 'center', backgroundColor: t === topic ? C.primarySoft : C.background, borderWidth: t === topic ? 2 : 0, borderColor: C.primary }}>
-            <Text style={{ fontFamily: F.b700, fontSize: 13, color: t === topic ? C.primaryDeep : C.ink }}>{t}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <ScrollView horizontal contentContainerStyle={{ gap: 8 }} style={{ maxHeight: 92 }}>
-        {current?.error && <Text style={s.cap}>{current.error}</Text>}
-        {current?.result?.items.slice(0, 12).map((g) => (
-          <Pressable accessibilityRole="button" key={g.gif_ref} onPress={() => onPick(g.gif_ref)} accessibilityLabel={`Envoyer le GIF ${g.title}`}>
-            <Image source={{ uri: api.absolute(g.preview_path) }} style={{ width: 112, height: 84, borderRadius: 16, backgroundColor: C.background }} />
-          </Pressable>
-        ))}
-      </ScrollView>
-      <View style={[s.row, { gap: 6 }]}>
-        <Icon name="globe" size={14} color={C.inkSoft} />
-        <Text style={s.cap}>Recherche filtrée : GIF adaptés aux enfants</Text>
-      </View>
-    </View>
   );
 }

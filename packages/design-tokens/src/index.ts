@@ -72,14 +72,18 @@ export const availabilityLabel = {
 } as const;
 
 /**
- * "En route" countdown from when the parent set it, in 5-minute steps so a child never sees
- * it race: 25 min → 20 min → … → 5 min → Presque là. Null when no ETA was given.
+ * "En route" countdown from the moment the parent set it: "arrive dans 20 min", stepping down
+ * 5 minutes at a time (20 → 15 → 10 → 5), then "Presque là". Null when no ETA was given.
+ *
+ * The wording says what the number means: a bare "20 min" did not tell the reader whether it
+ * was the delay the parent chose or the time left (test feedback, 21/10/2026). The 5-minute
+ * steps are deliberate: a child never sees the number race.
  */
 export function etaLabel(etaMinutes: number | null, setAt: string | null, now = Date.now()): string | null {
   if (!etaMinutes) return null;
   const elapsed = setAt ? Math.max(0, (now - Date.parse(setAt)) / 60_000) : 0;
   const left = etaMinutes - elapsed;
-  return left <= 0 ? 'Presque là' : `${Math.ceil(left / 5) * 5} min`;
+  return left <= 0 ? 'Presque là' : `arrive dans ${Math.ceil(left / 5) * 5} min`;
 }
 
 /** The 8 colours a parent can pick for a child profile (also the drawing palette). */

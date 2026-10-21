@@ -1,4 +1,5 @@
 import type {
+  AcceptInviteInput,
   ApprovePairingInput,
   Availability,
   ChatMessageInput,
@@ -20,6 +21,7 @@ import type {
   DeviceTokenResult,
   FamilyDto,
   GifSearchResult,
+  InviteDto,
   JoinPairingResult,
   MediaUpload,
   MessagesPage,
@@ -152,6 +154,13 @@ export function createSwagClient(options: ClientOptions) {
       request<PairingStateDto>('GET', `/pairing/sessions/${id}/state`, { query: { wait }, signal }),
     approvePairing: (id: string, body: ApprovePairingInput) => post<{ device_id: string }>(`/pairing/sessions/${id}/approve`, body),
     rejectPairing: (id: string) => post<void>(`/pairing/sessions/${id}/reject`),
+
+    // ------------------------------------------------------------ inviting another parent (FR-3)
+    /** "Inviter un autre parent": a code the other parent types when creating their account. */
+    createInvite: () => post<InviteDto>('/family/invites'),
+    /** Creates the second parent's account in the family that issued the code. */
+    acceptInvite: (body: AcceptInviteInput) =>
+      request<AuthResult>('POST', '/family/invites/accept', { body, auth: false }),
 
     // ------------------------------------------------------------ tablet
     joinPairing: (code: string, pairing_id?: string, device_info: Record<string, string> = {}) =>

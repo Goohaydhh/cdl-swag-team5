@@ -2,7 +2,7 @@ import { childPalette, stickerSvg, svgDataUri, swagStickers } from '@swag/design
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/session';
 import type { Tablet } from '../lib/useTablet';
-import { Gremlin, Icon, type IconName, Sticker } from '../ui/art';
+import { Icon, type IconName, Sticker } from '../ui/art';
 import { WhoChips } from '../ui/WhoChips';
 
 type Tool = 'brush' | 'erase' | 'fill' | 'stamp';
@@ -130,7 +130,7 @@ function paint(ctx: CanvasRenderingContext2D, ops: Op[]) {
   for (const op of ops) drawOp(ctx, op);
 }
 
-/** K11 "Mon dessin" and K12 "Ça te plaît ?": draw, preview, send to the family chat. */
+/** K11 "Mon dessin": draw, then one "Envoyer" sends it to the family chat. */
 export function DrawScreen({ t, onBack, onSent }: { t: Tablet; onBack: () => void; onSent: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [ops, setOps] = useState<Op[]>([]);
@@ -140,7 +140,6 @@ export function DrawScreen({ t, onBack, onSent }: { t: Tablet; onBack: () => voi
   const [size, setSize] = useState(14);
   const [eraseSize, setEraseSize] = useState(48);
   const [stamp, setStamp] = useState<string>(swagStickers[0]);
-  const [preview, setPreview] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const drawing = useRef<Op | null>(null);
@@ -165,7 +164,7 @@ export function DrawScreen({ t, onBack, onSent }: { t: Tablet; onBack: () => voi
   }, []);
   useEffect(() => {
     redraw(ops);
-  }, [ops, redraw, preview]);
+  }, [ops, redraw]);
   useEffect(() => {
     // Stamps are images: repaint once they are decoded.
     swagStickers.forEach((c) => (stampImage(c).onload = () => redraw(ops)));
@@ -265,11 +264,6 @@ export function DrawScreen({ t, onBack, onSent }: { t: Tablet; onBack: () => voi
     setRedo([]);
   };
 
-  const openPreview = () => {
-    setSel(null);
-    setConfirmClear(false);
-    setPreview(canvasRef.current?.toDataURL('image/png') ?? null);
-  };
   const undo = () => {
     setSel(null);
     setRedo((r) => [ops.at(-1)!, ...r]);
@@ -305,7 +299,14 @@ export function DrawScreen({ t, onBack, onSent }: { t: Tablet; onBack: () => voi
     return out;
   };
 
+  /**
+   * One "Envoyer" and the drawing is on its way: the children had to confirm twice ("Envoyer",
+   * then "Ça te plaît ?"), which the tester asked us to drop — a second check would only make
+   * sense if there were several chats to choose from (test feedback, 21/10/2026).
+   */
   const send = async () => {
+    setSel(null);
+    setConfirmClear(false);
     const canvas = exportCanvas();
     if (!canvas) return;
     setSending(true);
@@ -333,21 +334,18 @@ export function DrawScreen({ t, onBack, onSent }: { t: Tablet; onBack: () => voi
   return (
     <>
       <div className="row" style={{ padding: '20px 32px', gap: 16, flex: 'none' }}>
-        <button className="iconbtn" onClick={() => (preview ? setPreview(null) : onBack())} aria-label="Retour">
+        <button className="iconbtn" onClick={onBack} aria-label="Retour">
           <Icon name="left" size={32} stroke={2.6} />
         </button>
-        <h1 className="h1 grow">{preview ? 'Ça te plaît ?' : 'Mon dessin'}</h1>
-        {!preview && <WhoChips kids={t.kids} who={t.who} onChange={t.setWho} />}
-        {!preview && (
-          <button className="bigbtn" onClick={openPreview} disabled={!ops.length}>
-            <Icon name="send" size={32} color="#fff" />
-            Envoyer
-          </button>
-        )}
+        <h1 className="h1 grow">Mon dessin</h1>
+        <WhoChips kids={t.kids} who={t.who} onChange={t.setWho} />
+        <button className="bigbtn" onClick={() => void send()} disabled={!ops.length || sending}>
+          <Icon name="send" size={32} color="#fff" />
+          Envoyer
+        </button>
       </div>
 
-      {/* The canvas stays mounted under the preview so the drawing is kept. */}
-      <div className="row" style={{ padding: '0 32px 18px', gap: 24, flex: 1, minHeight: 0, alignItems: 'stretch', display: preview ? 'none' : 'flex' }}>
+      <div className="row" style={{ padding: '0 32px 18px', gap: 24, flex: 1, minHeight: 0, alignItems: 'stretch' }}>
         <div className="col" style={{ gap: 14, flex: 1, minWidth: 0 }}>
           <div className="card grow" style={{ borderRadius: 36, overflow: 'hidden', background: '#fff', minHeight: 0, position: 'relative' }}>
             <canvas
@@ -381,6 +379,39 @@ export function DrawScreen({ t, onBack, onSent }: { t: Tablet; onBack: () => voi
                   pointerEvents: 'none',
                 }}
               />
+            )}
+            {(sending || error) && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: 'rgba(255,255,255,.9)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 18,
+                  padding: 32,
+                  textAlign: 'center',
+                }}
+              >
+                {sending ? (
+                  <>
+                    <b className="h2">Ton dessin s’envoie…</b>
+                    <div className="progress" style={{ width: 320 }}>
+                      <div />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="error" role="alert" style={{ margin: 0 }}>{error}</p>
+                    <button className="bigbtn" onClick={() => void send()}>
+                      <Icon name="send" size={32} color="#fff" />
+                      Réessayer
+                    </button>
+                  </>
+                )}
+              </div>
             )}
           </div>
           <div className="row card" style={{ padding: '10px 16px', gap: 10, borderRadius: 36, flex: 'none', overflowX: 'auto' }}>
@@ -469,39 +500,6 @@ export function DrawScreen({ t, onBack, onSent }: { t: Tablet; onBack: () => voi
         </div>
       </div>
 
-      {preview && (
-        <>
-          <div className="row" style={{ flex: 1, padding: '0 56px', gap: 40 }}>
-            <div className="card" style={{ padding: 16, borderRadius: 40, flex: 'none' }}>
-              <img src={preview} alt="Aperçu du dessin" style={{ width: 640, display: 'block', borderRadius: 26 }} />
-            </div>
-            <div className="col" style={{ gap: 20, flex: 1 }}>
-              <h2 className="h1" style={{ maxWidth: 420 }}>Ton dessin part dans le chat de la famille</h2>
-              <div className="row pill" style={{ height: 84, padding: '0 24px', background: 'var(--a-primary-soft)', boxShadow: 'inset 0 0 0 4px var(--a-primary)', gap: 14 }}>
-                <Gremlin color="#6B4EFF" size={52} />
-                <b className="h2">Toute la famille</b>
-              </div>
-              {sending && (
-                <div className="card col" style={{ padding: '18px 20px', gap: 10, borderRadius: 28, boxShadow: 'inset 0 0 0 2px var(--a-line)' }}>
-                  <b className="h3">Ton dessin s’envoie…</b>
-                  <div className="progress"><div /></div>
-                </div>
-              )}
-              {error && <p className="error" role="alert">{error}</p>}
-            </div>
-          </div>
-          <div className="row" style={{ justifyContent: 'center', gap: 20, padding: '20px 32px 28px' }}>
-            <button className="bigbtn white" onClick={() => setPreview(null)}>
-              <Icon name="brush" size={32} stroke={2.4} />
-              Continuer à dessiner
-            </button>
-            <button className="bigbtn" onClick={send} disabled={sending}>
-              <Icon name="send" size={32} color="#fff" />
-              Envoyer
-            </button>
-          </div>
-        </>
-      )}
     </>
   );
 }
