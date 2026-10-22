@@ -1,0 +1,35 @@
+# Production on one Scaleway Instance (fr-par). PostgreSQL and Redis are Scaleway managed
+# services, files go to Scaleway Object Storage; this file only runs the API and Caddy (TLS).
+#
+#   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.production run --rm migrate
+#   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.production up -d
+services:
+  migrate:
+    build: { context: .., dockerfile: apps/api/Dockerfile, target: migrate }
+    env_file: .env.production
+    profiles: [tools]
+
+  api:
+    build: { context: .., dockerfile: apps/api/Dockerfile, target: api }
+    env_file: .env.production
+    environment:
+      NODE_ENV: production
+      TRUST_PROXY_HOPS: '1'
+    volumes:
+      - ./secrets:/run/secrets:ro # jwt-es256.pem, fcm-service-account.json
+    restart: unless-stopped
+    expose: ['3100']
+
+  caddy:
+    image: caddy:2-alpine
+    ports: ['80:80', '443:443']
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    environment:
+      API_DOMAIN: ${API_DOMAIN}
+    depends_on: [api]
+    restart: unless-stopped
+
+volumes:
+  caddy-data:

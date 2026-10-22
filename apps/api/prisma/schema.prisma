@@ -39,11 +39,11 @@ enum ChildStatus {
   at_friend
 }
 
+// "occupée" and "indisponible" are the same status (product decision): busy.
 enum Availability {
   available
   busy
   on_my_way
-  unavailable
 }
 
 enum RingerMode {
@@ -143,6 +143,9 @@ model Device {
   ownerUserId    String?    @map("owner_user_id") @db.Uuid // parent phones only
   name           String
   platformInfo   Json       @default("{}") @map("platform_info")
+  // Parent phones: stable id kept by the installation, so signing in again reuses this row
+  // instead of adding another "Appareil" to the family. Null for tablets and older phones.
+  installId      String?    @map("install_id") @db.Uuid
   credentialHash String?    @map("credential_hash") // tablets: SHA-256 of device refresh token
   pushToken      String?    @map("push_token")
   lastSeenAt     DateTime?  @map("last_seen_at") @db.Timestamptz
@@ -155,6 +158,7 @@ model Device {
   sessions     UserSession[]
   statusEvents StatusEvent[]
 
+  @@index([ownerUserId, installId])
   @@map("devices")
 }
 
@@ -173,12 +177,12 @@ model PairingSession {
   id             String       @id @db.Uuid
   kind           PairingKind
   state          PairingState @default(pending)
-  familyId       String?      @map("family_id") @db.Uuid // set on claim (tablet) or creation (invite)
+  familyId       String?      @map("family_id") @db.Uuid // set at creation: the parent generates both QR pairings and invites
   createdById    String?      @map("created_by") @db.Uuid
   claimedById    String?      @map("claimed_by") @db.Uuid
   codeHash       String       @map("code_hash") // HMAC-SHA256(server pepper, short code)
-  secretHash     String?      @map("secret_hash") // tablet poll secret, SHA-256
-  deviceInfo     Json         @default("{}") @map("device_info")
+  secretHash     String?      @map("secret_hash") // tablet poll secret, SHA-256, set when the tablet joins
+  deviceInfo     Json         @default("{}") @map("device_info") // sent by the tablet when it joins
   failedAttempts Int          @default(0) @map("failed_attempts")
   expiresAt      DateTime     @map("expires_at") @db.Timestamptz
   approvedAt     DateTime?    @map("approved_at") @db.Timestamptz
@@ -262,6 +266,8 @@ model Conversation {
   id        String   @id @db.Uuid
   familyId  String   @map("family_id") @db.Uuid
   isGroup   Boolean  @default(false) @map("is_group")
+  /// Direct threads only: the two members as sorted "type:id|type:id", so a pair has one thread.
+  directKey String?  @unique @map("direct_key")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   family   Family               @relation(fields: [familyId], references: [id], onDelete: Cascade)
@@ -310,6 +316,8 @@ model Message {
   mediaId        String?     @map("media_id") @db.Uuid
   stickerCode    String?     @map("sticker_code")
   gifRef         String?     @map("gif_ref") // Giphy ID, re-hosted in object storage
+  // Children who wrote the message together on the tablet ("who is speaking" chips).
+  speakerIds     String[]    @default([]) @map("speaker_ids") @db.Uuid
   clientMsgId    String      @map("client_msg_id") @db.Uuid
   createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz
   deletedAt      DateTime?   @map("deleted_at") @db.Timestamptz

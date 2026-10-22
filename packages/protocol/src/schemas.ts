@@ -16,6 +16,13 @@ export const Message = z.object({
   media_id: id.optional(),
   sticker_code: z.string().max(64).optional(),
   gif_ref: z.string().max(128).optional(),
+  /**
+   * Children who wrote the message together on the tablet ("who is speaking" chips).
+   * Empty for parents; one id for a single child; several for a shared message.
+   */
+  speaker_ids: z.array(id),
+  /** The sender's own id for this message, so its app can match the optimistic copy. */
+  client_msg_id: id.optional(),
   created_at: timestamp,
 });
 export type Message = z.infer<typeof Message>;
@@ -52,6 +59,11 @@ export const ChatMessageInput = z
     media_id: id.optional(),
     sticker_code: z.string().max(64).optional(),
     gif_ref: z.string().max(128).optional(),
+    /**
+     * Tablet (device token) only: the children checked in the "who is speaking" chips.
+     * Several ids = a shared message. Ignored for parents and child tokens.
+     */
+    speaker_ids: z.array(id).min(1).max(20).optional(),
   })
   .refine(
     (m) =>
@@ -63,7 +75,12 @@ export const ChatMessageInput = z
   );
 export type ChatMessageInput = z.infer<typeof ChatMessageInput>;
 
-export const ChatTypingInput = z.object({ conversation_id: id, typing: z.boolean() });
+export const ChatTypingInput = z.object({
+  conversation_id: id,
+  typing: z.boolean(),
+  /** Tablet only, same meaning as in `ChatMessageInput`. */
+  speaker_ids: z.array(id).min(1).max(20).optional(),
+});
 export type ChatTypingInput = z.infer<typeof ChatTypingInput>;
 
 export const ChatReadInput = z.object({ conversation_id: id, up_to_message_id: id });

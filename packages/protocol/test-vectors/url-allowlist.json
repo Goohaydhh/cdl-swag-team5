@@ -1,0 +1,38 @@
+{
+  "description": "Shared allowlist vectors (section 5.4). Run by packages/protocol (TypeScript) and the tablet SafeBrowser plugin (Kotlin).",
+  "rules": [
+    { "match": "domain", "host": "wikipedia.org", "path_prefix": "/" },
+    { "match": "prefix", "host": "youtube.com", "path_prefix": "/kids" },
+    { "match": "exact", "host": "www.lumni.fr", "path_prefix": "/primaire" }
+  ],
+  "cases": [
+    { "url": "https://wikipedia.org/", "allowed": true, "why": "domain itself" },
+    { "url": "https://fr.wikipedia.org/wiki/Chat", "allowed": true, "why": "subdomain of a domain rule" },
+    { "url": "https://FR.Wikipedia.ORG/wiki/Chat", "allowed": true, "why": "host is case-insensitive" },
+    { "url": "https://wikipedia.org.evil.com/", "allowed": false, "why": "suffix trick" },
+    { "url": "https://evilwikipedia.org/", "allowed": false, "why": "no dot boundary" },
+    { "url": "http://fr.wikipedia.org/", "allowed": false, "why": "https only" },
+    { "url": "https://user@fr.wikipedia.org/", "allowed": false, "why": "credentials rejected" },
+    { "url": "https://fr.wikipedia.org:8443/", "allowed": false, "why": "explicit port rejected" },
+    { "url": "https://fr.wikipedia.org:443/wiki", "allowed": true, "why": "default port is dropped" },
+    { "url": "https://youtube.com/kids", "allowed": true, "why": "prefix itself" },
+    { "url": "https://www.youtube.com/kids/video/1", "allowed": true, "why": "under the prefix, subdomain" },
+    { "url": "https://youtube.com/kidsevil", "allowed": false, "why": "prefix needs a path boundary" },
+    { "url": "https://youtube.com/watch?v=1", "allowed": false, "why": "outside the prefix" },
+    { "url": "https://youtube.com/kids/../watch", "allowed": false, "why": "dot-segments resolved first" },
+    { "url": "https://youtube.com/%6Bids/x", "allowed": true, "why": "unreserved percent-encoding decoded" },
+    { "url": "https://www.lumni.fr/primaire", "allowed": true, "why": "exact match" },
+    { "url": "https://www.lumni.fr/primaire/maths", "allowed": false, "why": "exact means exact" },
+    { "url": "https://lumni.fr/primaire", "allowed": false, "why": "exact host only" },
+    { "url": "https://93.184.216.34/", "allowed": false, "why": "IP literal" },
+    { "url": "javascript:alert(1)", "allowed": false, "why": "not a web URL" },
+    { "url": "not a url", "allowed": false, "why": "unparseable" }
+  ],
+  "build": [
+    { "input": "wikipedia.org", "match": "domain", "rule": { "match": "domain", "host": "wikipedia.org", "path_prefix": "/" } },
+    { "input": "https://www.youtube.com/kids/", "match": "prefix", "rule": { "match": "prefix", "host": "www.youtube.com", "path_prefix": "/kids" } },
+    { "input": "co.uk", "match": "domain", "rule": null },
+    { "input": "http://example.com", "match": "domain", "rule": null },
+    { "input": "localhost", "match": "domain", "rule": null }
+  ]
+}

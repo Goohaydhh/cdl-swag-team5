@@ -1,108 +1,144 @@
-import { color, space, statusColor } from '@swag/design-tokens';
-import {
-  type ChildStatus,
-  type ClientToServerEvents,
-  RT_NAMESPACE,
-  type ServerToClientEvents,
-} from '@swag/protocol';
+// Only the 5 weights the designs use are bundled (importing the package root would ship all of them).
+import { Fredoka_500Medium } from '@expo-google-fonts/fredoka/500Medium';
+import { Fredoka_600SemiBold } from '@expo-google-fonts/fredoka/600SemiBold';
+import { Nunito_400Regular } from '@expo-google-fonts/nunito/400Regular';
+import { Nunito_600SemiBold } from '@expo-google-fonts/nunito/600SemiBold';
+import { Nunito_700Bold } from '@expo-google-fonts/nunito/700Bold';
+import type { PairingSessionDto } from '@swag/client';
+import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
-import { io, type Socket } from 'socket.io-client';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboardOpen } from './src/lib/useKeyboard';
+import { onSessionChange, type ParentSession, restoreSession } from './src/lib/session';
+import { useFamily } from './src/lib/useFamily';
+import { ChatScreen } from './src/screens/ChatScreen';
+import { FamilyScreen } from './src/screens/FamilyScreen';
+import { HomeScreen } from './src/screens/HomeScreen';
+import { Onboarding } from './src/screens/Onboarding';
+import { PairScreen } from './src/screens/PairScreen';
+import { ValidateSheet } from './src/screens/ValidateSheet';
+import { Icon, type IconName } from './src/ui/art';
+import { C, F, s } from './src/ui/theme';
 
-// Sprint 0 family overview: proves the API -> parent phone round trip.
-// Sprint 1 adds login and pairing; Sprint 2 adds GET /family/overview, the widget and FCM.
-
-// Android emulator reaches the PC's localhost at 10.0.2.2; a real phone needs the PC's LAN IP.
-const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? 'http://10.0.2.2:3100';
-const familyId =
-  process.env.EXPO_PUBLIC_DEV_FAMILY_ID ?? '00000000-0000-4000-8000-000000000001';
-const parentId =
-  process.env.EXPO_PUBLIC_DEV_PARENT_ID ?? '00000000-0000-4000-8000-000000000003';
-
-const statusLabel: Record<ChildStatus, string> = {
-  at_home: 'At home',
-  left_home: 'Left home',
-  at_friend: "At a friend's",
-};
-
-interface ChildRow {
-  childId: string;
-  status: ChildStatus;
-  occurredAt: string;
-}
-
+/** SWAG parent app: account, then Accueil / Chat / Famille. */
 export default function App() {
-  const [connected, setConnected] = useState(false);
-  const [children, setChildren] = useState<Record<string, ChildRow>>({});
+  const [fontsLoaded] = useFonts({ Fredoka_500Medium, Fredoka_600SemiBold, Nunito_400Regular, Nunito_600SemiBold, Nunito_700Bold });
+  const [session, setSession] = useState<ParentSession | null | undefined>(undefined);
 
   useEffect(() => {
-    const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(
-      `${apiUrl}${RT_NAMESPACE}`,
-      { auth: { token: `dev:${familyId}:parent:${parentId}` } },
-    );
-    socket.on('connect', () => setConnected(true));
-    socket.on('disconnect', () => setConnected(false));
-    socket.on('status_updated', ({ data }) =>
-      setChildren((prev) => ({
-        ...prev,
-        [data.child_id]: { childId: data.child_id, status: data.status, occurredAt: data.occurred_at },
-      })),
-    );
-    return () => {
-      socket.close();
-    };
+    void restoreSession().then(setSession);
+    return onSessionChange(setSession);
   }, []);
 
-  const rows = Object.values(children);
-
-  return (
-    <View style={styles.screen}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Family</Text>
-        <Text style={[styles.badge, { color: connected ? statusColor.at_home : color.danger }]}>
-          {connected ? 'Live' : 'Offline'}
-        </Text>
+  if (!fontsLoaded || session === undefined) {
+    return (
+      <View style={[s.screen, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator color={C.primary} />
       </View>
-      <FlatList
-        data={rows}
-        keyExtractor={(r) => r.childId}
-        ListEmptyComponent={
-          <Text style={styles.empty}>No status yet. Tap a button on the tablet.</Text>
-        }
-        renderItem={({ item }) => (
-          <View style={[styles.card, { borderLeftColor: statusColor[item.status] }]}>
-            <Text style={styles.cardTitle}>{statusLabel[item.status]}</Text>
-            <Text style={styles.cardMeta}>
-              Child {item.childId.slice(0, 8)} ·{' '}
-              {new Date(item.occurredAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </Text>
-          </View>
-        )}
-      />
+    );
+  }
+  return (
+    <SafeAreaProvider>
+      <SafeAreaView style={s.screen} edges={['top', 'left', 'right']}>
+        {session ? <Main key={session.user.id} /> : <Onboarding />}
+      </SafeAreaView>
       <StatusBar style="dark" />
-    </View>
+    </SafeAreaProvider>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: color.background, paddingTop: 64, paddingHorizontal: space.md },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: space.lg,
-  },
-  title: { fontSize: 32, fontWeight: '700', color: color.textPrimary },
-  badge: { fontSize: 16, fontWeight: '600' },
-  empty: { fontSize: 16, color: color.textSecondary },
-  card: {
-    backgroundColor: color.surface,
-    borderRadius: 16,
-    borderLeftWidth: 8,
-    padding: space.md,
-    marginBottom: space.sm,
-  },
-  cardTitle: { fontSize: 22, fontWeight: '700', color: color.textPrimary },
-  cardMeta: { fontSize: 14, color: color.textSecondary, marginTop: space.xs },
-});
+type Tab = 'home' | 'chat' | 'fam';
+
+function Main() {
+  const f = useFamily();
+  const [tab, setTab] = useState<Tab>('home');
+  const [pairing, setPairingView] = useState(false);
+  const [validate, setValidate] = useState<{ id: string; model: string } | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  // Edge-to-edge is the default since SDK 54: the app draws under the navigation bar, so the
+  // tab bar has to pay for it itself. 22 px was a guess and the bar covered the labels.
+  const insets = useSafeAreaInsets();
+  const keyboardOpen = useKeyboardOpen();
+
+  const show = (m: string) => {
+    setToast(m);
+    setTimeout(() => setToast(null), 2600);
+  };
+
+  const onClaimed = useCallback(
+    (session: PairingSessionDto) => {
+      const model = f.pairing?.pairing_id === session.pairing_id ? String(f.pairing.device_info.model ?? 'Tablette') : 'Tablette';
+      setValidate((v) => v ?? { id: session.pairing_id, model });
+    },
+    [f.pairing],
+  );
+
+  // A tablet joined while the parent was elsewhere in the app (or on the other parent's phone).
+  const pendingClaim = f.pairing?.state === 'claimed' ? f.pairing : null;
+
+  const tabs: [Tab, IconName, string, boolean][] = [
+    ['home', 'house', 'Accueil', false],
+    ['chat', 'chat', 'Chat', f.unread > 0 && tab !== 'chat'],
+    ['fam', 'users', 'Famille', !!pendingClaim],
+  ];
+
+  return (
+    <View style={{ flex: 1 }}>
+      {pairing ? (
+        <PairScreen f={f} onBack={() => setPairingView(false)} onClaimed={onClaimed} />
+      ) : (
+        <>
+          <View style={{ flex: 1 }}>
+            {tab === 'home' && <HomeScreen f={f} />}
+            {tab === 'chat' && <ChatScreen f={f} />}
+            {tab === 'fam' && (
+              <FamilyScreen
+                f={f}
+                onPair={() => setPairingView(true)}
+                onValidate={() => pendingClaim && setValidate({ id: pendingClaim.pairing_id, model: String(pendingClaim.device_info.model ?? 'Tablette') })}
+              />
+            )}
+          </View>
+          {/* Hidden while typing: it was eating the chat's room for no use (test feedback, 22/10/2026). */}
+          {!keyboardOpen && (
+          <View
+            accessibilityRole="tablist"
+            style={{ flexDirection: 'row', paddingTop: 10, paddingBottom: 10 + insets.bottom, paddingHorizontal: 8, backgroundColor: C.surface, shadowColor: C.ink, shadowOpacity: 0.08, shadowRadius: 16, elevation: 8 }}
+          >
+            {tabs.map(([key, icon, label, dot]) => {
+              const on = tab === key;
+              return (
+                <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: on }} onPress={() => setTab(key)} style={{ flex: 1, alignItems: 'center', gap: 4 }}>
+                  <View style={{ width: 64, height: 32, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? C.primarySoft : 'transparent' }}>
+                    <Icon name={icon} size={24} color={on ? C.primary : C.inkSoft} />
+                    {dot && <View style={{ position: 'absolute', top: 2, right: 12, width: 10, height: 10, borderRadius: 5, backgroundColor: '#D9480F', borderWidth: 2, borderColor: C.surface }} />}
+                  </View>
+                  <Text style={{ fontFamily: F.b600, fontSize: 13, color: on ? C.primary : C.inkSoft }}>{label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          )}
+        </>
+      )}
+      <ValidateSheet
+        f={f}
+        pairingId={validate?.id ?? null}
+        model={validate?.model ?? 'Tablette'}
+        onDone={(approved) => {
+          setValidate(null);
+          setPairingView(false);
+          setTab('fam');
+          show(approved ? 'Tablette associée !' : 'Association refusée');
+        }}
+      />
+      {toast && (
+        <View pointerEvents="none" style={{ position: 'absolute', bottom: 100, alignSelf: 'center', backgroundColor: C.ink, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 999 }}>
+          <Text style={{ fontFamily: F.b700, color: '#fff' }}>{toast}</Text>
+        </View>
+      )}
+    </View>
+  );
+}

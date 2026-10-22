@@ -38,3 +38,17 @@ Thumbs.db
 
 # Generated Prisma client
 apps/api/src/generated/
+
+# Locally generated JWT signing keys
+apps/api/keys/
+
+# Production secrets and env
+deploy/secrets/
+deploy/.env.production
+.test-run.log
+
+# Local media storage, when the API serves the files itself (Termux tablet)
+apps/api/swag-media/
+
+# Deployment tarball shipped to the tablet (section 8 of the README)
+swag-api-update.tgz

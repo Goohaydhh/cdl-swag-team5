@@ -39,3 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Firebase: each developer downloads it (see SETUP.md)
+google-services.json
