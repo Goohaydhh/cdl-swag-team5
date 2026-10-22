@@ -141,6 +141,19 @@ export const UpdateChildInput = z
   .partial();
 export type UpdateChildInput = z.infer<typeof UpdateChildInput>;
 
+/**
+ * A parent editing their own profile: the name and the colour the children see. Cécile asked
+ * for an adult to be able to be "Maman" rather than their account name (feedback, 22/10/2026).
+ */
+export const UpdateMeInput = z
+  .object({
+    display_name: z.string().trim().min(1).max(30),
+    /** An avatar key; null falls back to the colour given by the order in the family. */
+    avatar_key: z.string().min(1).max(64).nullable(),
+  })
+  .partial();
+export type UpdateMeInput = z.infer<typeof UpdateMeInput>;
+
 export const UpdateDeviceInput = z
   .object({
     name: z.string().trim().min(1).max(60),

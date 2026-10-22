@@ -1,4 +1,4 @@
-import type { Availability, ChildStatus, Message, PairingState, RingerMode } from '@swag/protocol';
+import type { Availability, ChildStatus, MemberRef, Message, PairingState, RingerMode } from '@swag/protocol';
 
 // Response shapes of the SWAG API (apps/api). Request bodies come from @swag/protocol.
 
@@ -134,6 +134,12 @@ export interface ConversationDto {
   last_message: Message | null;
   unread_count: number;
   last_read_id: string | null;
+  /**
+   * Everyone else's read marker. The `chat_read` event only reports what happens from now on,
+   * so without this a client that has just started shows every sent message as unread.
+   * Optional: an API deployed before this field simply leaves the receipts to build up live.
+   */
+  readers?: { member: MemberRef; last_read_id: string }[];
 }
 
 export interface MessagesPage {

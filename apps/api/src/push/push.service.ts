@@ -70,6 +70,10 @@ export class PushService implements OnModuleInit {
     });
     const payload = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)]));
 
+    // Logged on the way out: without this there was no way to tell a push that was never sent
+    // from one the phone simply ignored (test, 22/10/2026).
+    this.logger.log(`push ${data.type}: ${phones.length} phone(s) with a token${this.fcm ? '' : ', FCM not configured'}`);
+
     await Promise.all(
       phones.map(async (phone) => {
         if (!this.fcm) {
@@ -78,6 +82,7 @@ export class PushService implements OnModuleInit {
           return;
         }
         const result = await this.fcm.send(phone.pushToken!, payload);
+        this.logger.log(`push ${data.type} to ${phone.id}: ${result}`);
         if (result === 'invalid_token') {
           await this.prisma.device.update({ where: { id: phone.id }, data: { pushToken: null } });
         }

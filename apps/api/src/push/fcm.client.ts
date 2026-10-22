@@ -6,7 +6,7 @@ export interface ServiceAccount {
   private_key: string;
 }
 
-export type SendResult = 'sent' | 'invalid_token' | 'failed';
+export type SendResult = 'sent' | 'invalid_token';
 
 /** Minimal Firebase Cloud Messaging HTTP v1 client, using a service-account OAuth token. */
 export class FcmClient {
@@ -30,7 +30,9 @@ export class FcmClient {
     if (res.ok) return 'sent';
     // UNREGISTERED (404) and INVALID_ARGUMENT on the token mean the app was uninstalled or reset.
     if (res.status === 404 || res.status === 400) return 'invalid_token';
-    return 'failed';
+    // Anything else is ours to fix — a disabled API, a rejected key — and used to be swallowed
+    // here, which is why nothing ever reached the log (test, 22/10/2026).
+    throw new Error(`FCM ${res.status}: ${(await res.text()).slice(0, 300)}`);
   }
 
   private async getAccessToken(): Promise<string> {

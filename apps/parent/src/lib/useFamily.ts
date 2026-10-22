@@ -27,6 +27,7 @@ export function useFamily() {
   const [devices, setDevices] = useState<DeviceDto[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatItem[]>([]);
+  const [readers, setReaders] = useState<Record<string, string>>({});
   const [unread, setUnread] = useState(0);
   const [typingKids, setTypingKids] = useState<string[]>([]);
   const [online, setOnline] = useState(false);
@@ -43,6 +44,7 @@ export function useFamily() {
     const chat = await api.familyChat();
     setConversationId(chat.id);
     setUnread(chatOpen.current ? 0 : chat.unread_count);
+    setReaders(Object.fromEntries((chat.readers ?? []).map((r) => [`${r.member.type}:${r.member.id}`, r.last_read_id])));
     const page = await api.messages(chat.id, undefined, 50);
     setMessages((prev) => {
       const server = [...page.items].reverse();
@@ -118,6 +120,7 @@ export function useFamily() {
       if (data.member.type !== 'child') return;
       setTypingKids(data.typing ? (data.speaker_ids ?? [data.member.id]) : []);
     });
+    socket.on('chat_read', ({ data }) => setReaders((prev) => mergeReader(prev, data.member, data.up_to_message_id)));
     socket.on('profiles_changed', () => void reload().catch(() => undefined));
     socket.on('pairing_updated', ({ data }) => {
       setPairing(data);
@@ -211,6 +214,7 @@ export function useFamily() {
     overview,
     devices,
     messages,
+    readers,
     unread,
     typingKids,
     online,
@@ -226,3 +230,13 @@ export function useFamily() {
 }
 
 export type Family = ReturnType<typeof useFamily>;
+
+/**
+ * Read markers, keyed "user:<id>" / "child:<id>". UUIDv7 sorts by time, so a member has read
+ * message M when their marker is >= M.id — the same comparison the API makes.
+ */
+function mergeReader(prev: Record<string, string>, member: { type: string; id: string }, upTo: string) {
+  const key = `${member.type}:${member.id}`;
+  // Never moves back: events can arrive out of order after a reconnection.
+  return prev[key] && prev[key]! >= upTo ? prev : { ...prev, [key]: upTo };
+}

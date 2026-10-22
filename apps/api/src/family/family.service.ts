@@ -1,12 +1,13 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import {
+  ErrorCode,
   type ChildSessionInput,
   type CreateChildInput,
   type DeviceTokenInput,
-  ErrorCode,
   type UpdateChildInput,
   type UpdateDeviceInput,
   type UpdateFamilyInput,
+  type UpdateMeInput,
 } from '@swag/protocol';
 import type { Principal } from '../auth/principal';
 import { ACCESS_TTL_SECONDS } from '../auth/principal';
@@ -121,6 +122,19 @@ export class FamilyService {
     });
     await this.profilesChanged(principal.fam);
     return toChildDto(child);
+  }
+
+  /** A parent edits their own name and colour — only their own: no one renames another adult. */
+  async updateMe(principal: Principal, input: UpdateMeInput) {
+    const user = await this.prisma.user.update({
+      where: { id: principal.sub },
+      data: {
+        displayName: input.display_name,
+        ...(input.avatar_key !== undefined ? { avatarKey: input.avatar_key } : {}),
+      },
+    });
+    await this.profilesChanged(principal.fam);
+    return { id: user.id, display_name: user.displayName, avatar_key: user.avatarKey, is_owner: user.isOwner };
   }
 
   async deleteChild(principal: Principal, childId: string) {

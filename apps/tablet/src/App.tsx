@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { forgetDevice, loadSession, saveSession, type DeviceSession } from './lib/session';
 import { unlockSound } from './lib/sound';
 import { useTablet } from './lib/useTablet';
+import { trackViewportHeight } from './lib/viewport';
 import { ChatScreen } from './screens/ChatScreen';
 import { DrawScreen } from './screens/DrawScreen';
 import { Pairing } from './screens/Pairing';
@@ -11,6 +12,8 @@ import { Icon } from './ui/art';
 /** The child tablet: pairing until a parent validates it, then status / chat / drawing. */
 export default function App() {
   const [session, setSession] = useState<DeviceSession | null>(() => loadSession());
+
+  useEffect(trackViewportHeight, []);
 
   // Sound is only allowed after a first touch: arm it on the very first one, whatever it was.
   useEffect(() => {
@@ -38,6 +41,8 @@ function Paired({ onRevoked }: { onRevoked: () => void }) {
   const t = useTablet(onRevoked);
   const [screen, setScreen] = useState<Screen>('status');
   const [toast, setToast] = useState<string | null>(null);
+  // The chat says when its keyboard panel is open, so the dock can step aside (see below).
+  const [typing, setTyping] = useState(false);
 
   const showToast = (m: string) => {
     setToast(m);
@@ -59,7 +64,7 @@ function Paired({ onRevoked }: { onRevoked: () => void }) {
       </div>
 
       {screen === 'status' && <StatusScreen t={t} />}
-      {screen === 'chat' && <ChatScreen t={t} onDraw={() => setScreen('draw')} />}
+      {screen === 'chat' && <ChatScreen t={t} onDraw={() => setScreen('draw')} onKeyboard={setTyping} />}
       {screen === 'draw' && (
         <DrawScreen
           t={t}
@@ -70,10 +75,11 @@ function Paired({ onRevoked }: { onRevoked: () => void }) {
 
       {/*
         Two buttons, always on screen, one per space — like the parent app. The children found
-        the chat's "go back" button unnatural (test feedback, 21/10/2026). Hidden only while
-        drawing, which takes the whole screen and keeps its own "Retour".
+        the chat's "go back" button unnatural (test feedback, 21/10/2026). Hidden while drawing,
+        which takes the whole screen and keeps its own "Retour", and while the keyboard is open,
+        where it only ate the room the message needed (test feedback, 22/10/2026).
       */}
-      {screen !== 'draw' && (
+      {screen !== 'draw' && !typing && (
         <div className="dock">
           <button aria-current={screen === 'status'} onClick={() => setScreen('status')}>
             <Icon name="house" size={32} stroke={2.4} />

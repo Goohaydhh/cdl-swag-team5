@@ -264,7 +264,7 @@ export class ChatService {
         conversationId_memberType_memberId: { conversationId: c.id, memberType: me.type, memberId: me.id },
       },
     });
-    const [last, unread] = await Promise.all([
+    const [last, unread, members] = await Promise.all([
       this.prisma.message.findFirst({
         where: { conversationId: c.id, deletedAt: null },
         orderBy: { id: 'desc' },
@@ -277,6 +277,9 @@ export class ChatService {
           ...(mine?.lastReadId ? { id: { gt: mine.lastReadId } } : {}),
         },
       }),
+      this.prisma.conversationMember.findMany({
+        where: { conversationId: c.id, lastReadId: { not: null } },
+      }),
     ]);
     return {
       id: c.id,
@@ -284,6 +287,14 @@ export class ChatService {
       last_message: last ? toMessageDto(last) : null,
       unread_count: unread,
       last_read_id: mine?.lastReadId ?? null,
+      // Everyone else's marker: `chat_read` only reports what happens from now on, so a client
+      // that has just started would otherwise show every message of its own as unread.
+      readers: members
+        .filter((m) => m.memberType !== 'system' && !(m.memberType === me.type && m.memberId === me.id))
+        .map((m) => ({
+          member: { type: m.memberType as 'user' | 'child', id: m.memberId },
+          last_read_id: m.lastReadId!,
+        })),
     };
   }
 }

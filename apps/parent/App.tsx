@@ -9,7 +9,8 @@ import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboardOpen } from './src/lib/useKeyboard';
 import { onSessionChange, type ParentSession, restoreSession } from './src/lib/session';
 import { useFamily } from './src/lib/useFamily';
 import { ChatScreen } from './src/screens/ChatScreen';
@@ -56,6 +57,10 @@ function Main() {
   const [pairing, setPairingView] = useState(false);
   const [validate, setValidate] = useState<{ id: string; model: string } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // Edge-to-edge is the default since SDK 54: the app draws under the navigation bar, so the
+  // tab bar has to pay for it itself. 22 px was a guess and the bar covered the labels.
+  const insets = useSafeAreaInsets();
+  const keyboardOpen = useKeyboardOpen();
 
   const show = (m: string) => {
     setToast(m);
@@ -96,9 +101,11 @@ function Main() {
               />
             )}
           </View>
+          {/* Hidden while typing: it was eating the chat's room for no use (test feedback, 22/10/2026). */}
+          {!keyboardOpen && (
           <View
             accessibilityRole="tablist"
-            style={{ flexDirection: 'row', paddingTop: 10, paddingBottom: 22, paddingHorizontal: 8, backgroundColor: C.surface, shadowColor: C.ink, shadowOpacity: 0.08, shadowRadius: 16, elevation: 8 }}
+            style={{ flexDirection: 'row', paddingTop: 10, paddingBottom: 10 + insets.bottom, paddingHorizontal: 8, backgroundColor: C.surface, shadowColor: C.ink, shadowOpacity: 0.08, shadowRadius: 16, elevation: 8 }}
           >
             {tabs.map(([key, icon, label, dot]) => {
               const on = tab === key;
@@ -113,6 +120,7 @@ function Main() {
               );
             })}
           </View>
+          )}
         </>
       )}
       <ValidateSheet

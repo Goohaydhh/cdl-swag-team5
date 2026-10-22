@@ -1,6 +1,7 @@
 import { formatCode, SwagApiError } from '@swag/client';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_URL, thisDevice } from '../lib/config';
 import { api, signedIn } from '../lib/session';
 import { Gremlin } from '../ui/art';
@@ -33,6 +34,9 @@ export function Onboarding() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [server, setServer] = useState(false);
+  // No tab bar on this screen, so nothing else reserves room for the navigation bar and it was
+  // sitting over the server section at the bottom (test feedback, 22/10/2026).
+  const insets = useSafeAreaInsets();
 
   const go = (next: Mode) => {
     setMode(next);
@@ -85,7 +89,7 @@ export function Onboarding() {
   return (
     // "padding" on Android too: with edge-to-edge the keyboard covers the fields otherwise.
     <KeyboardAvoidingView style={s.screen} behavior="padding">
-      <ScrollView contentContainerStyle={[s.page, { gap: 14, paddingTop: 16 }]} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[s.page, { gap: 14, paddingTop: 16, paddingBottom: 16 + insets.bottom }]} keyboardShouldPersistTaps="handled">
         <View style={{ alignItems: 'center', gap: 6, paddingVertical: 8 }}>
           <Gremlin color={C.primary} size={84} />
           <Text style={[s.h1, { color: C.primary }]}>SWAG</Text>

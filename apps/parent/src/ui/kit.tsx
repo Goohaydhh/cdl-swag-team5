@@ -1,4 +1,4 @@
-import { radius } from '@swag/design-tokens';
+import { gremlinAvatars, radius } from '@swag/design-tokens';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, type StyleProp, Text, View, type ViewStyle } from 'react-native';
 import { Gremlin, Icon, type IconName } from './art';
@@ -71,6 +71,10 @@ export function Initial({ name, color, size = 44 }: { name: string; color: strin
   );
 }
 export const PARENT_COLORS = ['#6B4EFF', '#3DBE7A', '#FF8A3D', '#3B9BF0'];
+
+/** A parent's colour: the one they chose, else the one their order in the family gives them. */
+export const parentColor = (parent: { avatar_key?: string | null }, index: number) =>
+  gremlinAvatars[(parent.avatar_key ?? '') as keyof typeof gremlinAvatars] ?? PARENT_COLORS[index % PARENT_COLORS.length]!;
 
 /** Overlapping Gremlins for a shared message. */
 export function GremlinStack({ colors, size }: { colors: string[]; size: number }) {

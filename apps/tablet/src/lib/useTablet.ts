@@ -1,10 +1,8 @@
 import type { DeviceProfilesDto } from '@swag/client';
 import {
-  type Availability,
   type ChildStatus,
   type ClientToServerEvents,
   type Message,
-  type RingerMode,
   RT_NAMESPACE,
   type ServerToClientEvents,
 } from '@swag/protocol';
@@ -17,15 +15,12 @@ import { playMessageSound } from './sound';
 import { load, save } from './storage';
 
 export type Kid = DeviceProfilesDto['children'][number];
-export type Parent = {
-  id: string;
-  display_name: string;
-  availability: Availability;
-  eta_minutes: number | null;
-  /** When the availability (and so the ETA countdown) was set. */
-  availability_at: string | null;
-  ringer: RingerMode;
-};
+/**
+ * Taken straight from the endpoint rather than retyped: the hand-written copy had silently
+ * dropped `avatar_key` and the parents' chosen colour never reached the tablet (22/10/2026).
+ * `availability_at` is when the availability, and so the ETA countdown, was set.
+ */
+export type Parent = DeviceProfilesDto['parents'][number];
 export interface StatusInfo { status: ChildStatus; occurred_at: string }
 /** A message on screen: confirmed by the server, or still in the outbox. */
 export type ChatItem = Message & { pending?: boolean };
@@ -42,7 +37,7 @@ export function useTablet(onRevoked: () => void) {
   const [who, setWhoState] = useState<string[]>(() => load<string[]>(WHO_KEY, []));
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatItem[]>([]);
-  const [readUpTo, setReadUpTo] = useState<{ id: string; by: string } | null>(null);
+  const [readers, setReaders] = useState<Record<string, string>>({});
   const [typing, setTyping] = useState<string | null>(null);
   const [online, setOnline] = useState(false);
   const [outboxSize, setOutboxSize] = useState(pending().length);
@@ -82,6 +77,7 @@ export function useTablet(onRevoked: () => void) {
     const chat = await api.familyChat();
     setConversationId(chat.id);
     setUnread(chat.unread_count);
+    setReaders(Object.fromEntries((chat.readers ?? []).map((r) => [`${r.member.type}:${r.member.id}`, r.last_read_id])));
     const page = await api.messages(chat.id, undefined, 50);
     setMessages((prev) => {
       const server = [...page.items].reverse();
@@ -148,7 +144,7 @@ export function useTablet(onRevoked: () => void) {
           setTyping(data.typing ? data.member.id : null);
         });
         socket.on('chat_read', ({ data }) => {
-          if (data.member.type === 'user') setReadUpTo({ id: data.up_to_message_id, by: data.member.id });
+          setReaders((prev) => mergeReader(prev, data.member, data.up_to_message_id));
         });
         socket.on('profiles_changed', () => void loadProfiles().catch(fail));
         socket.on('device_revoked', () => onRevoked());
@@ -233,7 +229,7 @@ export function useTablet(onRevoked: () => void) {
     who,
     setWho,
     messages,
-    readUpTo,
+    readers,
     typingParent,
     online,
     outboxSize,
@@ -246,3 +242,13 @@ export function useTablet(onRevoked: () => void) {
 }
 
 export type Tablet = ReturnType<typeof useTablet>;
+
+/**
+ * Read markers, keyed "user:<id>" / "child:<id>". UUIDv7 sorts by time, so a member has read
+ * message M when their marker is >= M.id — the same comparison the API makes.
+ */
+function mergeReader(prev: Record<string, string>, member: { type: string; id: string }, upTo: string) {
+  const key = `${member.type}:${member.id}`;
+  // Never moves back: events can arrive out of order after a reconnection.
+  return prev[key] && prev[key]! >= upTo ? prev : { ...prev, [key]: upTo };
+}

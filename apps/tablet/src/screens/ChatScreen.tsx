@@ -1,10 +1,11 @@
 import { speakerLabel } from '@swag/client';
 import { swagStickers } from '@swag/design-tokens';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMediaUrl } from '../lib/media';
+import { speak } from '../lib/speech';
 import type { ChatItem, Kid, Tablet } from '../lib/useTablet';
 import { Gremlin, GremlinStack, Icon, Initial, Sticker } from '../ui/art';
-import { kidColor, PARENT_COLORS } from '../ui/colors';
+import { kidColor, parentColor as tintFor } from '../ui/colors';
 import { WhoChips } from '../ui/WhoChips';
 
 type Panel = null | 'kb';
@@ -15,10 +16,15 @@ type Panel = null | 'kb';
  * There is no "go back" button any more: the children found it unnatural and asked for the two
  * always-visible buttons of the parent app instead, so the dock switches spaces (App.tsx).
  */
-export function ChatScreen({ t, onDraw }: { t: Tablet; onDraw: () => void }) {
-  const [panel, setPanel] = useState<Panel>(null);
+export function ChatScreen({ t, onDraw, onKeyboard }: { t: Tablet; onDraw: () => void; onKeyboard: (open: boolean) => void }) {
+  const [panel, setPanelState] = useState<Panel>(null);
+  const [receipt, setReceipt] = useState<ChatItem | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const { markRead, setChatOpen } = t;
+
+  // App.tsx hides the dock while the keyboard panel is up, so tell it on every change.
+  const setPanel = useCallback((p: Panel) => (setPanelState(p), onKeyboard(p === 'kb')), [onKeyboard]);
+  useEffect(() => () => onKeyboard(false), [onKeyboard]);
 
   useEffect(() => {
     setChatOpen(true);
@@ -28,6 +34,7 @@ export function ChatScreen({ t, onDraw }: { t: Tablet; onDraw: () => void }) {
     markRead();
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [t.messages.length, markRead]);
+
 
   const sticker = (code: string) => t.sendMessage({ kind: 'sticker', sticker_code: code });
 
@@ -59,7 +66,7 @@ export function ChatScreen({ t, onDraw }: { t: Tablet; onDraw: () => void }) {
       ) : (
         <div className="msgs" ref={listRef} aria-live="polite">
           {t.messages.map((m) => (
-            <MessageRow key={m.id} m={m} t={t} />
+            <MessageRow key={m.id} m={m} t={t} onReceipt={setReceipt} />
           ))}
           {t.typingParent && (
             <div className="row" style={{ gap: 12 }}>
@@ -103,23 +110,32 @@ export function ChatScreen({ t, onDraw }: { t: Tablet; onDraw: () => void }) {
           </button>
         </div>
       )}
+
+      <ReadReceipt m={receipt} t={t} onClose={() => setReceipt(null)} />
     </>
   );
 }
 
-const parentColor = (t: Tablet, id: string) => PARENT_COLORS[Math.max(0, t.parents.findIndex((p) => p.id === id)) % PARENT_COLORS.length]!;
+/** The parent's chosen colour, falling back to their order in the family. */
+const parentColor = (t: Tablet, id: string) => {
+  const i = Math.max(0, t.parents.findIndex((p) => p.id === id));
+  return tintFor(t.parents[i] ?? { avatar_key: null }, i);
+};
 
-function MessageRow({ m, t }: { m: ChatItem; t: Tablet }) {
+function MessageRow({ m, t, onReceipt }: { m: ChatItem; t: Tablet; onReceipt: (m: ChatItem) => void }) {
   const fromKids = m.sender.type === 'child';
   if (!fromKids) {
     const parent = t.parents.find((p) => p.id === m.sender.id);
     const name = parent?.display_name ?? 'Parent';
     return (
       <div className="col" style={{ gap: 6, alignItems: 'flex-start' }}>
-        <div className="row" style={{ gap: 12, alignItems: 'flex-end' }}>
-          <Initial name={name} color={parentColor(t, m.sender.id)} />
-          <Content m={m} mine={false} />
+        {/* Avatar and name above the bubble, the same shape as the parent app, and the name is
+            now actually shown — it was only feeding the initial (test feedback, 22/10/2026). */}
+        <div className="row" style={{ gap: 8, font: '700 16px var(--font-b)', color: 'var(--a-soft)' }}>
+          <Initial name={name} color={parentColor(t, m.sender.id)} size={36} />
+          {name}
         </div>
+        <Content m={m} mine={false} />
       </div>
     );
   }
@@ -127,7 +143,7 @@ function MessageRow({ m, t }: { m: ChatItem; t: Tablet }) {
     .map((id) => t.kids.find((k) => k.id === id))
     .filter((k): k is Kid => !!k);
   const label = speakerLabel(speakers.map((k) => k.display_name)) || 'Un enfant';
-  const read = !m.pending && t.readUpTo && t.readUpTo.id >= m.id ? t.parents.find((p) => p.id === t.readUpTo!.by) : null;
+  const readBy = m.pending ? [] : t.parents.filter((p) => readsUpTo(t.readers, 'user', p.id, m.id));
   return (
     <div className="col" style={{ gap: 6, alignItems: 'flex-end' }}>
       <div className="row" style={{ gap: 8, justifyContent: 'flex-end', font: '700 16px var(--font-b)', color: 'var(--a-soft)' }}>
@@ -136,9 +152,64 @@ function MessageRow({ m, t }: { m: ChatItem; t: Tablet }) {
         {speakers.length > 1 ? ' · message commun' : ''}
       </div>
       <Content m={m} mine />
-      <div className="row" style={{ gap: 6, font: '700 16px var(--font-b)', color: m.pending ? 'var(--a-soft)' : read ? 'var(--a-friend)' : 'var(--a-home)' }}>
-        <Icon name={m.pending ? 'clock' : 'check'} size={20} stroke={3} />
-        {m.pending ? 'Envoi…' : read ? `Lu par ${read.display_name}` : 'Envoyé'}
+      <button
+        className="row receipt"
+        onClick={() => onReceipt(m)}
+        disabled={m.pending}
+        aria-label="Voir qui a lu ce message"
+        style={{ color: m.pending ? 'var(--a-soft)' : readBy.length ? 'var(--a-friend)' : 'var(--a-home)' }}
+      >
+        {m.pending ? <Icon name="clock" size={20} stroke={3} /> : <Ticks read={readBy.length > 0} />}
+        {m.pending ? 'Envoi…' : readBy.length ? 'Lu' : 'Envoyé'}
+      </button>
+    </div>
+  );
+}
+
+/** A member has read a message when their marker reaches it (UUIDv7 sorts by time). */
+function readsUpTo(readers: Record<string, string>, type: string, id: string, messageId: string) {
+  const upTo = readers[`${type}:${id}`];
+  return !!upTo && upTo >= messageId;
+}
+
+/** One tick once the message is sent, two once someone has read it. */
+function Ticks({ read }: { read: boolean }) {
+  return (
+    <span aria-hidden style={{ display: 'inline-flex' }}>
+      <Icon name="check" size={20} stroke={3} />
+      {read && (
+        <span style={{ display: 'inline-flex', marginLeft: -11 }}>
+          <Icon name="check" size={20} stroke={3} />
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** Tapping a sent message says which parent has read it and which has not. */
+function ReadReceipt({ m, t, onClose }: { m: ChatItem | null; t: Tablet; onClose: () => void }) {
+  if (!m) return null;
+  return (
+    <div className="sheet" role="dialog" aria-label="Qui a lu ce message" onClick={onClose}>
+      <div className="card sheetbox" onClick={(e) => e.stopPropagation()}>
+        <h2 className="h2">Qui a lu ce message ?</h2>
+        {t.parents.length === 0 && <p className="lead">Personne d’autre dans la famille pour l’instant.</p>}
+        {t.parents.map((p) => {
+          const read = readsUpTo(t.readers, 'user', p.id, m.id);
+          return (
+            <div className="row" key={p.id} style={{ gap: 16 }}>
+              <Initial name={p.display_name} color={parentColor(t, p.id)} />
+              <span className="h3 grow">{p.display_name}</span>
+              <span className="row" style={{ gap: 8, font: '700 18px var(--font-b)', color: read ? 'var(--a-friend)' : 'var(--a-soft)' }}>
+                {read && <Ticks read />}
+                {read ? 'Lu' : 'Pas encore lu'}
+              </span>
+            </div>
+          );
+        })}
+        <button className="bigbtn" onClick={onClose} style={{ alignSelf: 'center' }}>
+          Fermer
+        </button>
       </div>
     </div>
   );
@@ -167,12 +238,12 @@ function Content({ m, mine }: { m: ChatItem; mine: boolean }) {
       </div>
     );
   }
-  // The "lire à voix haute" button was removed on 21/10/2026: nothing happened when the children
-  // touched it (no speech engine in the tablet's webview). To come back as a real accessibility
-  // option, with the other ones.
   return (
     <div className="card row bubble-them">
       <span className="msgtext">{m.body}</span>
+      <button className="pill" onClick={() => void speak(m.body ?? '')} style={{ width: 64, height: 64, background: 'var(--a-primary-soft)', color: 'var(--a-primary)', display: 'grid', placeItems: 'center', flex: 'none' }} aria-label="Lire à voix haute">
+        <Icon name="volume" size={32} />
+      </button>
     </div>
   );
 }

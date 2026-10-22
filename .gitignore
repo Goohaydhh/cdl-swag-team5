@@ -49,3 +49,6 @@ deploy/.env.production
 
 # Local media storage, when the API serves the files itself (Termux tablet)
 apps/api/swag-media/
+
+# Deployment tarball shipped to the tablet (section 8 of the README)
+swag-api-update.tgz

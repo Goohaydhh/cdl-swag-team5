@@ -6,3 +6,7 @@ export const kidColor = (child: { avatar_key: string; color: string }) =>
 
 /** Parents have a round initial in these colours, in family order. */
 export const PARENT_COLORS = ['#6B4EFF', '#3DBE7A', '#FF8A3D', '#3B9BF0'];
+/** A parent's colour: the one they chose, else the one their order in the family gives them. */
+export const parentColor = (parent: { avatar_key?: string | null }, index: number) =>
+  gremlinAvatars[(parent.avatar_key ?? '') as keyof typeof gremlinAvatars] ?? PARENT_COLORS[index % PARENT_COLORS.length]!;
+

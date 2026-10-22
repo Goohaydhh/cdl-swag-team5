@@ -1,9 +1,12 @@
+import { SwagApiError } from '@swag/client';
 import { childPalette, stickerSvg, swagStickers } from '@swag/design-tokens';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, PanResponder, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { G, Path, Rect, SvgXml } from 'react-native-svg';
-import { api } from '../lib/session';
+import { API_URL } from '../lib/config';
+import { accessToken } from '../lib/session';
 import type { Family } from '../lib/useFamily';
 import { Icon, type IconName, Sticker } from '../ui/art';
 import { Button } from '../ui/kit';
@@ -155,8 +158,9 @@ export function DrawScreen({
     const c = cfg.current;
     push({
       type: 'line',
-      // The eraser paints the paper colour, so it also works on a filled background.
-      color: c.tool === 'erase' ? c.bg : c.color,
+      // The eraser paints white, not the paper colour: that is what was asked for, and it is
+      // what a real eraser looks like on a coloured sheet (test feedback, 22/10/2026).
+      color: c.tool === 'erase' ? WHITE : c.color,
       size: c.tool === 'erase' ? c.eraseSize : c.size,
       points: pts,
     });
@@ -224,20 +228,38 @@ export function DrawScreen({
     setConfirmClear(false);
     setSending(true);
     setError(null);
+    let kb = 0;
     try {
       const base64 = await exportPng();
-      const form = new FormData();
-      // React Native uploads a file by URI: a data: URI avoids writing a temp file first.
-      form.append('file', {
-        uri: `data:image/png;base64,${base64}`,
-        name: 'dessin.png',
-        type: 'image/png',
-      } as unknown as Blob);
-      const media = await api.uploadMedia(form);
+      kb = Math.round((base64.length * 3) / 4 / 1024);
+      // The API caps images at 1 MB, and multer tears the stream down when that is passed, so
+      // the phone saw a bare connection failure instead of an answer (test, 22/10/2026).
+      if (kb > 1000) throw new Error(`dessin trop lourd (${kb} Ko pour un maximum de 1 Mo)`);
+
+      const uri = `${FileSystem.cacheDirectory}dessin-${Date.now()}.png`;
+      await FileSystem.writeAsStringAsync(uri, base64, { encoding: 'base64' });
+      // Expo's native uploader rather than React Native's FormData: FormData reads the file
+      // through OkHttp and reports every failure as a status-less "network error", which told
+      // us nothing. This one hands back the real HTTP status.
+      const token = await accessToken();
+      const res = await FileSystem.uploadAsync(`${API_URL}/v1/media`, uri, {
+        httpMethod: 'POST',
+        uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+        fieldName: 'file',
+        mimeType: 'image/png',
+        headers: token ? { authorization: `Bearer ${token}` } : {},
+      });
+      void FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined);
+      if (res.status < 200 || res.status >= 300) throw new Error(`HTTP ${res.status} · ${(res.body ?? '').slice(0, 140)}`);
+      const media = JSON.parse(res.body) as { id: string };
       await f.send({ kind: 'drawing', media_id: media.id });
       onSent();
-    } catch {
-      setError('Le dessin n’est pas parti. Vérifie ta connexion et réessaie.');
+    } catch (err) {
+      const detail =
+        err instanceof SwagApiError
+          ? `${err.status} ${err.code} ${err.message}`
+          : ((err as Error)?.message ?? 'erreur inconnue');
+      setError(`Le dessin n’est pas parti : ${detail}${kb ? ` · PNG de ${kb} Ko` : ''}`);
     } finally {
       setSending(false);
     }
@@ -312,7 +334,7 @@ export function DrawScreen({
                 {live && live.length > 0 && (
                   <Path
                     d={pathD(live)}
-                    stroke={tool === 'erase' ? bg : color}
+                    stroke={tool === 'erase' ? WHITE : color}
                     strokeWidth={tool === 'erase' ? eraseSize : size}
                     fill="none"
                     strokeLinecap="round"

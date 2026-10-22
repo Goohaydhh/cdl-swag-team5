@@ -8,13 +8,14 @@ import { relativeTime } from '../lib/format';
 import { api, signOut } from '../lib/session';
 import type { Family } from '../lib/useFamily';
 import { Gremlin, Icon, kidColor } from '../ui/art';
-import { Button, Card, Initial, PARENT_COLORS } from '../ui/kit';
+import { Button, Card, Initial, parentColor } from '../ui/kit';
 import { C, F, s } from '../ui/theme';
 
 /** P7 "Famille et appareils": children, parents, the pairing entry point, tablets and phones. */
 export function FamilyScreen({ f, onPair, onValidate }: { f: Family; onPair: () => void; onValidate: () => void }) {
   const [adding, setAdding] = useState(false);
   const [inviting, setInviting] = useState(false);
+  const [editingMe, setEditingMe] = useState(false);
   const tablets = f.devices.filter((d) => d.kind === 'child_tablet');
   const phones = f.devices.filter((d) => d.kind === 'parent_phone');
   const parents = f.family?.parents ?? [];
@@ -81,11 +82,16 @@ export function FamilyScreen({ f, onPair, onValidate }: { f: Family; onPair: () 
       <Card style={{ paddingVertical: 4 }}>
         {parents.map((p, i) => (
           <View key={p.id} style={[s.row, { paddingVertical: 10, paddingHorizontal: 16 }]}>
-            <Initial name={p.display_name} color={PARENT_COLORS[i % PARENT_COLORS.length]!} />
+            <Initial name={p.display_name} color={parentColor(p, i)} />
             <View style={s.grow}>
               <Text style={s.strong}>{p.display_name}{p.id === f.me ? ' (moi)' : ''}</Text>
               <Text style={s.cap}>{p.is_owner ? 'A créé la famille' : 'Parent'}</Text>
             </View>
+            {p.id === f.me && (
+              <Pressable accessibilityRole="button" accessibilityLabel="Modifier mon profil" hitSlop={8} onPress={() => setEditingMe(true)}>
+                <Text style={{ fontFamily: F.b700, color: C.primary }}>Modifier</Text>
+              </Pressable>
+            )}
           </View>
         ))}
       </Card>
@@ -138,7 +144,94 @@ export function FamilyScreen({ f, onPair, onValidate }: { f: Family; onPair: () 
       <Button label="Me déconnecter" icon="logout" variant="white" onPress={() => void signOut()} />
       <AddChild visible={adding} onClose={() => setAdding(false)} onAdded={() => (setAdding(false), void f.reload())} />
       <InviteParent visible={inviting} onClose={() => (setInviting(false), void f.reload())} />
+      <EditMe visible={editingMe} onClose={() => setEditingMe(false)} f={f} />
     </ScrollView>
+  );
+}
+
+/** The two names a parent is most likely to want the children to see. */
+const NAME_IDEAS = ['Maman', 'Papa'];
+
+/**
+ * A parent's own name and colour. Cécile asked for an adult to be able to be "Maman" to the
+ * children rather than their account name (feedback, 22/10/2026). The colour feeds the round
+ * initial everywhere, on the phone and on the tablet.
+ */
+function EditMe({ visible, onClose, f }: { visible: boolean; onClose: () => void; f: Family }) {
+  const me = f.family?.parents.find((p) => p.id === f.me);
+  const [name, setName] = useState('');
+  const [avatar, setAvatar] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Reloaded on each opening, so the sheet never shows a stale name.
+  useEffect(() => {
+    if (!visible) return;
+    setName(me?.display_name ?? '');
+    setAvatar(me?.avatar_key ?? null);
+    setError(null);
+  }, [visible, me?.display_name, me?.avatar_key]);
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.updateMe({ display_name: name.trim(), avatar_key: avatar });
+      await f.reload();
+      onClose();
+    } catch (err) {
+      setError(err instanceof SwagApiError ? err.message : 'Impossible d’enregistrer.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Sheet visible={visible} onClose={onClose}>
+      <Text style={s.h3}>Mon profil</Text>
+      <Text style={s.cap}>Le nom et la couleur que les enfants voient.</Text>
+      <View style={[s.row, { gap: 8 }]}>
+        {NAME_IDEAS.map((n) => (
+          <Pressable
+            accessibilityRole="button"
+            key={n}
+            onPress={() => setName(n)}
+            style={{ paddingHorizontal: 18, height: 40, borderRadius: 999, justifyContent: 'center', backgroundColor: name === n ? C.primary : C.background }}
+          >
+            <Text style={{ fontFamily: F.b700, color: name === n ? '#fff' : C.ink }}>{n}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <TextInput
+        value={name}
+        onChangeText={setName}
+        maxLength={30}
+        placeholder="Ou écris un autre nom"
+        placeholderTextColor={C.inkSoft}
+        accessibilityLabel="Mon nom"
+        style={{ height: 48, borderRadius: 16, backgroundColor: C.background, paddingHorizontal: 16, fontFamily: F.b600, fontSize: 16, color: C.ink }}
+      />
+      <Text style={s.cap}>Ma couleur</Text>
+      <View style={[s.row, { flexWrap: 'wrap', gap: 10 }]}>
+        {(Object.keys(gremlinAvatars) as (keyof typeof gremlinAvatars)[]).map((k) => {
+          const on = avatar === k;
+          return (
+            <Pressable
+              accessibilityRole="button"
+              key={k}
+              accessibilityLabel={`Couleur ${k}`}
+              accessibilityState={{ selected: on }}
+              onPress={() => setAvatar(k)}
+              style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: gremlinAvatars[k], alignItems: 'center', justifyContent: 'center', borderWidth: on ? 4 : 0, borderColor: C.ink }}
+            >
+              {on && <Icon name="check" size={20} color="#fff" stroke={3.2} />}
+            </Pressable>
+          );
+        })}
+      </View>
+      {error && <Text style={[s.cap, { color: C.danger }]}>{error}</Text>}
+      <Button label="Enregistrer" onPress={() => void save()} busy={busy} disabled={!name.trim() || busy} />
+    </Sheet>
   );
 }
 

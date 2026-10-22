@@ -6,7 +6,7 @@ import { relativeTime, todayLabel } from '../lib/format';
 import { api } from '../lib/session';
 import type { Family } from '../lib/useFamily';
 import { Gremlin, Icon, type IconName, kidColor } from '../ui/art';
-import { Card, Initial, PARENT_COLORS } from '../ui/kit';
+import { Card, Initial, parentColor } from '../ui/kit';
 import { C, F, s } from '../ui/theme';
 
 const STATUS_ICON: Record<string, IconName> = { at_home: 'house', left_home: 'door', at_friend: 'users' };
@@ -79,7 +79,7 @@ export function HomeScreen({ f }: { f: Family }) {
           {o.parents.map((p, i) => (
             <View key={p.id} style={s.row}>
               <View>
-                <Initial name={p.display_name} color={PARENT_COLORS[i % PARENT_COLORS.length]!} />
+                <Initial name={p.display_name} color={parentColor(p, i)} />
                 <RingerBadge mode={p.ringer} />
               </View>
               <View style={s.grow}>

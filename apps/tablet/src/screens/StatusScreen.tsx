@@ -4,7 +4,7 @@ import type { ChildStatus, RingerMode } from '@swag/protocol';
 import { useEffect, useState } from 'react';
 import type { Tablet } from '../lib/useTablet';
 import { GremlinStack, Icon, type IconName, Initial } from '../ui/art';
-import { kidColor, PARENT_COLORS } from '../ui/colors';
+import { kidColor, parentColor } from '../ui/colors';
 import { WhoChips } from '../ui/WhoChips';
 
 const TILES: { status: ChildStatus; icon: IconName }[] = [
@@ -29,7 +29,6 @@ function useNow(ticking: boolean) {
 export function StatusScreen({ t }: { t: Tablet }) {
   const speaking = t.kids.filter((k) => t.who.includes(k.id));
   const names = speaking.length >= 3 ? 'les enfants' : speakerLabel(speaking.map((k) => k.display_name));
-  const parentNames = speakerLabel(t.parents.map((p) => p.display_name)) || 'tes parents';
   const now = useNow(t.parents.some((p) => p.availability === 'on_my_way' && !!p.eta_minutes));
 
   return (
@@ -50,7 +49,7 @@ export function StatusScreen({ t }: { t: Tablet }) {
             {t.parents.map((p, i) => (
               <div className="row" key={p.id}>
                 <span style={{ position: 'relative', display: 'inline-flex' }}>
-                  <Initial name={p.display_name} color={PARENT_COLORS[i % PARENT_COLORS.length]!} />
+                  <Initial name={p.display_name} color={parentColor(p, i)} />
                   <RingerBadge mode={p.ringer} />
                 </span>
                 <div>
@@ -76,14 +75,6 @@ export function StatusScreen({ t }: { t: Tablet }) {
                 <Icon name={icon} size={84} color={col} />
               </span>
               {statusChildLabel[status]}
-              {isOn ? (
-                <span className="sent">
-                  <Icon name={t.outboxSize ? 'clock' : 'check'} size={24} color={t.outboxSize ? 'var(--a-soft)' : 'var(--a-home)'} stroke={3.2} />
-                  {t.outboxSize ? 'Pas encore envoyé' : `Envoyé à ${parentNames}`}
-                </span>
-              ) : (
-                <span style={{ height: 48 }} />
-              )}
             </button>
           );
         })}

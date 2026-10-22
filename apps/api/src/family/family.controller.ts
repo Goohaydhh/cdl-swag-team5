@@ -6,6 +6,7 @@ import {
   UpdateChildInput,
   UpdateDeviceInput,
   UpdateFamilyInput,
+  UpdateMeInput,
 } from '@swag/protocol';
 import { ClientIp, CurrentPrincipal, Public, Scopes } from '../auth/decorators';
 import type { Principal } from '../auth/principal';
@@ -24,6 +25,12 @@ export class FamilyController {
   @Patch('family')
   update(@CurrentPrincipal() p: Principal, @Body(new ZodPipe(UpdateFamilyInput)) body: UpdateFamilyInput) {
     return this.family.updateFamily(p, body);
+  }
+
+  /** Parent scope by default (see AuthGuard): an adult only ever edits their own profile. */
+  @Patch('me')
+  updateMe(@CurrentPrincipal() p: Principal, @Body(new ZodPipe(UpdateMeInput)) body: UpdateMeInput) {
+    return this.family.updateMe(p, body);
   }
 
   @Get('children')

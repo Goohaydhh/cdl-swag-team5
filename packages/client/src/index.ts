@@ -11,6 +11,7 @@ import type {
   RegisterInput,
   UpdateChildInput,
   UpdateDeviceInput,
+  UpdateMeInput,
 } from '@swag/protocol';
 import type {
   AuthResult,
@@ -29,6 +30,7 @@ import type {
   PairingPollResult,
   PairingSessionDto,
   PairingStateDto,
+  ParentDto,
   ParentTokens,
   SignedMedia,
   StickerPack,
@@ -184,6 +186,8 @@ export function createSwagClient(options: ClientOptions) {
       get<MessagesPage>(`/conversations/${conversationId}/messages`, { before, limit }),
     sendMessage: (conversationId: string, body: Omit<ChatMessageInput, 'conversation_id'>) =>
       post<{ message: Message; duplicate: boolean }>(`/conversations/${conversationId}/messages`, body),
+    /** The signed-in parent's own name and colour. */
+    updateMe: (body: UpdateMeInput) => request<ParentDto>('PATCH', '/me', { body }),
     stickers: () => get<StickerPack[]>('/stickers/packs'),
     searchGifs: (q: string, offset = 0) => get<GifSearchResult>('/gifs/search', { q, offset }),
     /** `form` holds the PNG in a field named `file`. */
