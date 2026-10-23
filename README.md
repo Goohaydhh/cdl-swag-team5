@@ -239,6 +239,9 @@ the API's address. It is saved on the phone, and the app has to be restarted to 
 
 ## 8. Running the API on the tablet (Termux)
 
+> Setting up a **brand-new tablet** from scratch, for someone who is not a developer:
+> [`GUIDE-TABLETTE.md`](GUIDE-TABLETTE.md) — in French, one command at a time.
+
 For the family test the whole backend runs on the child tablet, so nothing depends on a PC
 being switched on. PostgreSQL, Redis and the API all live inside **Termux**.
 
