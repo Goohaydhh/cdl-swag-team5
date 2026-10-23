@@ -104,6 +104,9 @@ phones — Autostart on and battery saver off for the app.
 
 ## Running the API on the tablet
 
+A brand-new tablet, set up by a non-developer: [`GUIDE-TABLETTE.md`](GUIDE-TABLETTE.md),
+in French, one command at a time.
+
 See section 8 of the [README](README.md). In short: PostgreSQL, Redis and the API run inside
 Termux on the child tablet, `scripts/termux/fix-argon2.sh` is applied once per install,
 `scripts/termux/start-swag.sh` brings everything up, and new API builds are shipped as a
